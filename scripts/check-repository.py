@@ -283,11 +283,17 @@ def scripts_are_executable_and_shebanged(problems):
             continue
         relative = script.relative_to(ROOT).as_posix()
 
-        first = script.read_text(encoding="utf-8").splitlines()[0]
+        raw = script.read_bytes()
+
+        first = raw.decode("utf-8").splitlines()[0]
         if not first.startswith("#!"):
             problems.append(f"{relative} has no shebang.")
 
-        if "\r" in script.read_text(encoding="utf-8", newline=""):
+        # **Bytes, not `read_text(newline="")`.** That keyword arrived in Python
+        # 3.13 and CI runs 3.12, so the check crashed there while passing on the
+        # machine it was written on — which is the whole failure mode a CI job
+        # exists to catch, arriving in the checker itself.
+        if b"\r" in raw:
             problems.append(
                 f"{relative} has CRLF line endings. A shebang ending in \\r names "
                 "a command that does not exist, and the error says neither the "
