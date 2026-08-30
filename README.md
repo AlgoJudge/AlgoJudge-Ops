@@ -1,5 +1,8 @@
 # AlgoJudge-Ops
 
+AlgoJudge is open-source, self-hosted software for programming contests and
+courses, with automatic evaluation of submitted solutions.
+
 The production Compose stack for [AlgoJudge](https://github.com/AlgoJudge), and
 the scripts that make a self-hosted installation updatable and backupable.
 
@@ -38,12 +41,18 @@ follow, and they run through everything here:
 
 | | |
 |---|---|
-| `compose.yaml` | every service, five profiles, one file |
+| `compose.yaml` | every service, six profile names, one file |
 | `.env.example` | every variable, with no secret values |
 | `nginx/` | TLS, one origin for both halves, and the page for when the Client is gone |
-| `scripts/` | preflight, backup, restore, update, rollback, maintenance, gc |
+| `scripts/` | preflight, backup, restore, update, rollback, maintenance, gc, render-tls, install-cron, check-repository, and the `lib/` they share |
 | `cron/` | the suggested schedule, installed only if you ask |
 | `docs/` | [INSTALL](docs/INSTALL.md), [OPERATIONS](docs/OPERATIONS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) |
+
+**Six profile names, five services.** `data`, `app`, `server`, `client`, `edge`
+and `runner` — the Server and the Client each carry two, which is what lets one
+half be brought up on its own. The row said *five profiles* until 2026-08-30;
+that was the count of services declaring one, not of names to put in
+`COMPOSE_PROFILES`.
 
 ## Quick start
 
@@ -98,6 +107,23 @@ them.
 - **No `Content-Security-Policy`.** The Client writes its runtime configuration
   into `index.html` as an inline script, which a policy worth having would need
   a nonce for. Closing it belongs in `AlgoJudge-Client`.
+
+## Related repositories
+
+**This repository holds no application code and builds nothing.** Every image is
+pulled from GHCR by tag; what is assembled here is built elsewhere.
+
+- [AlgoJudge-Server](https://github.com/AlgoJudge/AlgoJudge-Server) — the
+  `algojudge-server` image, and `aj-admin` inside it
+- [AlgoJudge-Client](https://github.com/AlgoJudge/AlgoJudge-Client) — the
+  `algojudge-client` image nginx serves
+- [AlgoJudge-Runner](https://github.com/AlgoJudge/AlgoJudge-Runner) — the
+  `algojudge-runner` image and the four `lang-*` sandboxes it starts
+- `AlgoJudge-Identity-Keycloak` and `AlgoJudge-Identity-Authentik` — the two
+  supported identity deployments. **An installation runs one**, beside this
+  stack rather than inside it: neither is a service in `compose.yaml`, and
+  neither is a fallback for the other
+- `AlgoJudge-Design` — the accepted decision record
 
 ## The specification
 
