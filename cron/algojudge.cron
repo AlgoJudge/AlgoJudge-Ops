@@ -1,0 +1,48 @@
+# The suggested schedule. Installed by `scripts/install-cron.sh`, never
+# automatically — when this installation updates itself, if ever, is the
+# administrator's decision and not this repository's.
+#
+# **All times are the LOCAL time of this host.** 04:00 means 04:00 to whoever
+# operates the machine, which is what somebody told "the nightly backup runs at
+# four" expects, and it keeps the work inside the organisation's actual quiet
+# hours rather than a fixed UTC offset that drifts against them twice a year.
+#
+# `CRON_TZ` is honoured by Vixie cron and by cronie, and is **not** portable to
+# every implementation. `install-cron.sh` checks the running one and falls back
+# to the host's zone with a warning rather than silently scheduling against a
+# different clock.
+CRON_TZ=Europe/Warsaw
+
+# **Daylight saving is why these two hours and not others.** In the EU the change
+# happens at 01:00 UTC — 02:00 or 03:00 local — so 04:00 and 06:00 are never
+# skipped and never repeated. This does not generalise: some zones switch at
+# midnight. Check your own switch hour before moving these.
+
+# Backup — 04:00 local.
+0 4 * * *  cd /opt/algojudge-ops && ./scripts/backup.sh  >>/var/log/algojudge/backup.log 2>&1
+
+# Update — 04:15 local. **Commented out on purpose.** Update policy belongs to
+# the administrator; this repository ships a tool, not a schedule. Uncomment it
+# only once a restore has been rehearsed at least once.
+#
+# It is a separate entry from the backup even though `update.sh` takes its own
+# dump first, so that an installation which does not want automatic updates still
+# gets backups. `flock` in `lib/common.sh` keeps the two from overlapping when a
+# backup runs long.
+#15 4 * * * cd /opt/algojudge-ops && ./scripts/update.sh >>/var/log/algojudge/update.log 2>&1
+
+# Garbage collection — 06:00 local.
+#
+# **Not the same 06:00 the Server uses.** The Server's own file collector is
+# anchored to UTC (`Files:CollectAtHourUtc`, 06:00 by default), so the two fall
+# at different moments — two hours apart in a Warsaw winter and three in summer.
+# That is harmless, and it is written down so nobody assumes one schedule governs
+# both.
+0 6 * * *  cd /opt/algojudge-ops && ./scripts/gc.sh      >>/var/log/algojudge/gc.log 2>&1
+
+# **A non-zero exit has to be noticeable somewhere.** Nothing here notifies
+# anybody, so a backup that has been failing for three weeks surfaces during the
+# incident it was meant to survive. Point `MAILTO` at somebody who reads it, or
+# wire the logs into whatever this organisation already watches — see the open
+# question in docs/OPERATIONS.md.
+#MAILTO=ops@example.org
