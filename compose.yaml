@@ -1,0 +1,293 @@
+# The AlgoJudge stack, as an installation runs it.
+#
+#     cp .env.example .env      # then fill in the values it says are required
+#     ./scripts/preflight.sh    # refuses now rather than half way up
+#     docker compose up -d --wait
+#
+# **One file, and the topology is chosen with `COMPOSE_PROFILES` in `.env`.**
+# Three files would mean three copies of every network, volume, health check and
+# variable, and a change remembered in all of them or in none. See `docs/INSTALL.md`
+# for the four arrangements this supports.
+#
+# **Nothing here is built.** Every image is pulled by tag from GHCR and the tag is
+# a variable, so an update is `docker compose pull` and a rollback is a digest —
+# see `scripts/update.sh`. The development stacks that build from source live in
+# the product repositories and are labelled as development there.
+
+name: algojudge
+
+services:
+
+  # ── The database ────────────────────────────────────────────────────────────
+
+  postgres:
+    profiles: ["data"]
+    image: postgres:${POSTGRES_TAG:-18}
+    restart: unless-stopped
+
+    # **The volume is one level above PGDATA and that is not a typo.**
+    # PostgreSQL 18 keeps its data in `/var/lib/postgresql/18/docker`, so the
+    # volume belongs at `/var/lib/postgresql`. Mounting the old
+    # `/var/lib/postgresql/data` makes the container refuse to start, and an
+    # unpinned `postgres:latest` rolling over to 18 is how this was found.
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+    # **No host port, in any topology.** Everything that needs the database is on
+    # the `backend` network; anything else reaching it is an accident. A dump is
+    # taken through `docker compose exec`, which needs no port — see
+    # `scripts/backup.sh`.
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-algojudge}
+      POSTGRES_USER: ${POSTGRES_USER:-algojudge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — see .env.example}
+
+    healthcheck:
+      # `-U` and `-d` both, or `pg_isready` reports the *server* is up while the
+      # role and database the Server connects as do not exist yet. `$$` escapes
+      # the substitution so Compose leaves it for the shell in the container.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-algojudge} -d $${POSTGRES_DB:-algojudge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    networks:
+      - backend
+
+  # ── The Server ──────────────────────────────────────────────────────────────
+
+  server:
+    profiles: ["app", "server"]
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-server:${SERVER_TAG:-1}
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      # Production is the default when this is absent, but an installation should
+      # not depend on a default for the setting that decides whether the demo
+      # world gets seeded.
+      DOTNET_ENVIRONMENT: Production
+
+      AJ_ConnectionStrings__DbConnectionString: >-
+        Host=postgres;Database=${POSTGRES_DB:-algojudge};Username=${POSTGRES_USER:-algojudge};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — see .env.example}
+
+      # **Without this there is no way into a new installation.** `/admin` is
+      # closed while it is empty, and that includes the endpoint that sets the
+      # administrator's password — which is otherwise twenty random characters
+      # nobody was told. `docs/INSTALL.md` opens with it.
+      AJ_Admin__Token: ${AJ_ADMIN_TOKEN:?AJ_ADMIN_TOKEN is required — see .env.example}
+
+      # **An installation that names no trusted proxy does not start.** Trusting
+      # every sender of `X-Forwarded-For` lets a visitor state their own address;
+      # trusting only loopback records the proxy. This names the network nginx
+      # reaches the Server from, which is why `edge` has a fixed subnet below.
+      # Behind somebody else's proxy (T3), set it to theirs.
+      AJ_Forwarded__KnownNetworks: ${TRUSTED_PROXY_NETWORKS:-172.28.0.0/24}
+
+      # **One store, in the database, by default** — which is what makes a single
+      # `pg_dump` a complete backup. `filesystem` and `s3` are supported and cost
+      # a second thing to back up; `docs/OPERATIONS.md` says what changes.
+      AJ_Storage__Stores__objects__Kind: ${STORAGE_KIND:-postgres}
+      AJ_Storage__Default: objects
+
+      # Applies the schema at start. Off in the Server by default, deliberately:
+      # a schema change is a decision somebody makes. An installation that says
+      # yes here is making it, and `scripts/update.sh` takes a backup first.
+      AJ_Database__MigrateOnStart: ${MIGRATE_ON_START:-true}
+
+      # Read once, at the first start of an empty database, from the directory
+      # mounted below. Absent means the panel is the only way to configure this
+      # installation. See `docs/INSTALL.md`.
+      AJ_Preconfiguration__Path: /etc/algojudge/preconfig
+
+    volumes:
+      # Optional, and `:ro`. The directory exists in this repository so the mount
+      # never fails; an empty one configures nothing.
+      - ./preconfig:/etc/algojudge/preconfig:ro
+
+    # **Loopback only, and it is not conditional on the topology.** Compose
+    # cannot publish a port for some profiles and not others, so this is bound to
+    # `127.0.0.1` in every arrangement rather than opened in one of them. It is
+    # not a way into `/admin`: a connection made to the host's own loopback
+    # arrives inside the container as the bridge gateway, so `Peer.IsLoopback` is
+    # false and the whole group answers 404. Measured 2026-08-28.
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-8080}:8080"
+
+    # From the image: it asks `/api/v1/health` over bash's `/dev/tcp`, because
+    # the image has no curl and no wget. Do not override it with one that uses
+    # either.
+
+    networks:
+      - edge
+      - backend
+      - runner
+
+  # ── The Client ──────────────────────────────────────────────────────────────
+
+  client:
+    profiles: ["app", "client"]
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-client:${CLIENT_TAG:-1}
+    restart: unless-stopped
+
+    environment:
+      # **`/` means "the origin this page came from"**, which is the case nginx
+      # below creates: one domain serving the application at `/` and the API at
+      # `/api/v1`. The Client appends the path itself — it is fixed on every
+      # installation — so this names an origin and never a path.
+      #
+      # Serving the two from different origins is supported: put the Server's
+      # public address here, and add it to `AJ_Cors__AllowedOrigins` on the
+      # Server. `docs/INSTALL.md` covers that arrangement.
+      API_BASE_URL: ${API_BASE_URL:-/}
+      USE_FAKE_API: "false"
+
+    ports:
+      - "127.0.0.1:${CLIENT_PORT:-8082}:80"
+
+    networks:
+      - edge
+
+  # ── The edge ────────────────────────────────────────────────────────────────
+
+  nginx:
+    profiles: ["edge"]
+    image: nginx:${NGINX_TAG:-1.27-alpine}
+    restart: unless-stopped
+
+    depends_on:
+      # Started, not healthy: nginx has an answer for an upstream that is not
+      # there yet, and waiting would make a slow Server a failed `up`.
+      server:
+        condition: service_started
+      client:
+        condition: service_started
+
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+
+    volumes:
+      - ./nginx/algojudge.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/offline:/srv/offline:ro
+      # Read-only, and supplied by the administrator. `scripts/render-tls.sh`
+      # writes a self-signed pair here if it is empty, so a first start produces
+      # a working instance with a browser warning rather than a container that
+      # will not start.
+      - ./certs:/etc/nginx/certs:ro
+      # Served at `/.well-known/acme-challenge/`, so a certificate can be renewed
+      # by whatever the administrator already uses. Nothing here issues one.
+      - ./certs/acme:/srv/acme:ro
+
+    healthcheck:
+      # Against its own HTTP listener rather than the upstreams: this says nginx
+      # is serving, and `/api/v1/health` says whether the Server is.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+    networks:
+      - edge
+
+  # ── The Runner ──────────────────────────────────────────────────────────────
+
+  runner:
+    profiles: ["runner"]
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-runner:${RUNNER_TAG:-1}
+    restart: unless-stopped
+
+    # **No `depends_on` on the Server, deliberately.** This profile has to start
+    # on its own on a separate host, where there is no Server service to depend
+    # on. The Runner retries its own connection.
+
+    environment:
+      # Must carry `/api/v1`; the Runner refuses at startup without it. On the
+      # same host this is the container name, and on a Runner-only host it is the
+      # installation's public HTTPS address.
+      AJ_Server__BaseUrl: ${SERVER_URL:-http://server:8080}/api/v1
+
+      AJ_Runner__Name: ${RUNNER_NAME:-runner-1}
+      AJ_Runner__ProblemTypes: ${RUNNER_PROBLEM_TYPES:-standard-io@1,output-only@1}
+
+      # **Read once, at the first registration, and never again.** A Runner that
+      # could re-declare its tags would put itself into an examination's pool
+      # with nobody approving it. Empty means the general pool.
+      AJ_Runner__Tags: ${RUNNER_TAGS:-}
+
+      # **The language images, which have no working default here.** Compiled in,
+      # the Runner looks for `algojudge/lang-*:local` — images the development
+      # flow builds and a fresh host has never heard of. A submission then fails
+      # to be judged with nothing obviously wrong.
+      AJ_Sandbox__Image__Gcc: ${REGISTRY:-ghcr.io/algojudge}/lang-gcc:${RUNNER_TAG:-1}
+      AJ_Sandbox__Image__Clang: ${REGISTRY:-ghcr.io/algojudge}/lang-clang:${RUNNER_TAG:-1}
+      AJ_Sandbox__Image__Python: ${REGISTRY:-ghcr.io/algojudge}/lang-python:${RUNNER_TAG:-1}
+      AJ_Sandbox__Image__Pypy: ${REGISTRY:-ghcr.io/algojudge}/lang-pypy:${RUNNER_TAG:-1}
+
+      AJ_Work__Path: /var/lib/algojudge-runner/work
+
+      # **As the *daemon* sees it, not as the Runner does.** The Runner asks the
+      # daemon to mount this into each job container, and a path the daemon
+      # cannot open produces an **empty directory** rather than an error — so
+      # every job silently runs against nothing. It must equal the host side of
+      # the bind mount below, which is why both come from one variable.
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}
+
+      RUST_LOG: ${RUNNER_LOG:-info}
+
+    volumes:
+      # **The identity key, and losing it costs a re-registration and a manual
+      # approval.** A named volume, so it survives `down` and an image change.
+      - runner-identity:/var/lib/algojudge-runner
+      - runner-cache:/var/cache/algojudge-runner
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}:/var/lib/algojudge-runner/work
+      # The Runner starts **sibling** containers through the daemon. Job
+      # containers never get the socket themselves.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    # **The group, not root.** The image runs as `nonroot`; on a Linux host the
+    # socket is `root:docker` mode 660, so adding the group keeps the process
+    # unprivileged. `docs/INSTALL.md` says how to find the id, and
+    # `docs/OPERATIONS.md` states plainly what socket access is worth to somebody
+    # who gets it.
+    group_add:
+      - ${DOCKER_GID:-999}
+
+    # **Generous, and it buys less than it looks.** The Runner does not handle
+    # SIGTERM: it is killed and its job goes back on the queue when the lease
+    # expires. A clean drain is `aj-admin maintenance on` on the *Server* first —
+    # `scripts/maintenance.sh` — after which there is nothing in flight to lose.
+    stop_grace_period: ${RUNNER_STOP_GRACE:-300s}
+
+    networks:
+      - runner
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+#
+# Three, so that the database is not reachable from the edge and evaluation
+# traffic is separable from HTTP.
+
+networks:
+  # **A fixed subnet, because the Server has to be told whose word to take for a
+  # visitor's address.** Left to Docker this is whatever was free, so
+  # `AJ_Forwarded__KnownNetworks` could not name it and would have to trust
+  # everything or nothing. Change both this and `TRUSTED_PROXY_NETWORKS` together
+  # if it collides with something on the host — and write a network address, not
+  # a host one: a CIDR with host bits set is refused by name at startup.
+  edge:
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.28.0.0/24}
+  backend:
+  runner:
+
+volumes:
+  pgdata:
+  runner-identity:
+  runner-cache:

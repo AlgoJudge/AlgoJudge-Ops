@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AlgoJudge is not answering</title>
+<!--
+  Shown when the *Client* container is not there — never during maintenance.
+  A maintenance window is the Server answering 503, which the application turns
+  into its own page in its own language; this one only exists for the case where
+  there is no application to show anything at all.
+
+  No stylesheet, no font, no script, no image: it has to work precisely when
+  nothing else does, and every one of those is a request that would also fail.
+-->
+<style>
+  body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+         margin: 0; min-height: 100vh; display: grid; place-items: center;
+         background: #f6f7f9; color: #1f2933; }
+  main { max-width: 34rem; padding: 2rem; text-align: center; }
+  h1 { font-size: 1.4rem; margin: 0 0 .75rem; }
+  p { margin: 0 0 .5rem; }
+  .quiet { color: #62707d; font-size: .9rem; }
+</style>
+<main>
+  <h1>AlgoJudge is not answering</h1>
+  <p>The site is temporarily unavailable. Nothing you were working on has been lost.</p>
+  <p class="quiet">Please try again in a moment. If this lasts, the installation's administrator has been given the details in the server log.</p>
+</main>
