@@ -1,0 +1,5 @@
+# LF in the repository and in the working copy, whatever the host does. These are
+# shell scripts and Compose files that run inside Linux containers: a CRLF in a
+# shebang makes `#!/usr/bin/env bash\r` a command that does not exist, and the
+# error names neither the file nor the reason.
+* text=auto eol=lf

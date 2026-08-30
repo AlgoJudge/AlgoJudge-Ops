@@ -1,0 +1,38 @@
+# The installation's own configuration and secrets. `.env.example` is the only
+# one of these ever committed, and it carries variable names with no values.
+.env
+.env.*
+!.env.example
+
+# Certificates. A private key committed once stays committed.
+#
+# `!certs/acme/` is not redundant: `certs/*` excludes the directory itself, and
+# Git does not look inside an excluded directory — so the un-ignore on the file
+# beneath it never gets a chance to match. The mount point would then be missing
+# from a fresh clone, and Docker would create it as root.
+certs/*
+!certs/.gitkeep
+!certs/acme/
+!certs/acme/.gitkeep
+*.pem
+*.key
+
+# What this installation holds. None of it belongs to the repository: dumps carry
+# personal data and the key ring that mints session cookies, and `state/` is one
+# installation's idea of what is running.
+backups/*
+!backups/.gitkeep
+state/*
+!state/.gitkeep
+
+# The pre-configuration a real installation fills in. The directory is committed
+# so the mount never fails; what an organisation puts in it is theirs.
+preconfig/*
+!preconfig/.gitkeep
+!preconfig/README.md
+
+# The Runner's scratch space, if anybody points it inside the repository.
+runner-work/
+
+.DS_Store
+Thumbs.db
