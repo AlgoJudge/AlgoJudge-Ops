@@ -130,3 +130,29 @@ pulled from GHCR by tag; what is assembled here is built elsewhere.
 `docs/specs/DEPLOYMENT.md` in the AlgoJudge workspace is the accepted
 specification and the decision register — including the corrections made to the
 original draft after it was checked against the code.
+
+## License
+
+**Two licences, because this repository holds two different things.**
+
+| What | Licence | File |
+|---|---|---|
+| The stack and the scripts: `compose.yaml`, `nginx/`, `scripts/`, `Makefile`, `cron/`, `.env.example` | MIT | `LICENSE` |
+| The documentation: `README.md`, `docs/` and `preconfig/README.md` | CC BY 4.0 | `LICENSE-DOCS` |
+| A command, compose fragment or configuration sample shown inside one of those documents | MIT | `LICENSE` |
+
+CC BY 4.0 is the prose equivalent of MIT: copy it, change it, put it in
+something you sell, and the only condition is saying where it came from. The
+samples are carved back out to MIT so that pasting a `docker compose` line out
+of `docs/INSTALL.md` obliges nobody.
+
+Attribute the prose as **AlgoJudge-Ops documentation, © 2026 The AlgoJudge
+Authors, CC BY 4.0**.
+
+`LICENSE-DOCS` is Creative Commons' legal code exactly as published at
+<https://creativecommons.org/licenses/by/4.0/legalcode.txt>, byte for byte.
+
+The split was decided on 2026-08-31 for `AlgoJudge-Docs` and applies here for
+the same reason: this repository's `docs/` is the administrator documentation
+that `docs.algojudge.pl` was written from, and it becomes public when this
+repository does. See `AlgoJudge-Design/adr/DOCUMENTATION_SITE_2026-08-09.md` §9.
