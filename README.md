@@ -89,7 +89,12 @@ pulled from GHCR by tag; what is assembled here is built elsewhere.
   `algojudge-client` image nginx serves
 - [AlgoJudge-Runner](https://github.com/AlgoJudge/AlgoJudge-Runner) — the
   `algojudge-runner` image and the four `lang-*` sandboxes it starts
-- `AlgoJudge-Design` — the decision record
+- [AlgoJudge-External-Runner](https://github.com/AlgoJudge/AlgoJudge-External-Runner)
+  — a second Runner, forwarding submissions to external judging systems. Not in
+  any of the arrangements above: it is deployed beside the stack, like a Runner
+  on its own machine
+- [AlgoJudge-Docs](https://github.com/AlgoJudge/AlgoJudge-Docs) — the public
+  documentation site, whose `/install/` section is written from `docs/` here
 
 ## Contributing
 
