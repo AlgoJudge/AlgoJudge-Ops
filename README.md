@@ -89,10 +89,6 @@ pulled from GHCR by tag; what is assembled here is built elsewhere.
   `algojudge-client` image nginx serves
 - [AlgoJudge-Runner](https://github.com/AlgoJudge/AlgoJudge-Runner) — the
   `algojudge-runner` image and the four `lang-*` sandboxes it starts
-- `AlgoJudge-Identity-Keycloak` and `AlgoJudge-Identity-Authentik` — the two
-  supported identity deployments. **An installation runs one**, beside this
-  stack rather than inside it: neither is a service in `compose.yaml`, and
-  neither is a fallback for the other
 - `AlgoJudge-Design` — the decision record
 
 ## Contributing
@@ -106,9 +102,9 @@ By contributing you agree that your work is licensed under the terms below.
 ## License
 
 This project's code is licensed under the MIT License.
-See LICENSE.
+See [LICENSE](LICENSE).
 
 The documentation is licensed under CC BY 4.0.
-See LICENSE-DOCS.
+See [LICENSE-DOCS](LICENSE-DOCS).
 
-Authors are listed in AUTHORS.txt.
+Authors are listed in [AUTHORS.txt](AUTHORS.txt).
