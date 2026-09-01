@@ -150,15 +150,31 @@ job do not meet on their own.
 
 ## `Permission denied (os error 13)` in the Runner
 
-`DOCKER_GID` does not match the group that owns the daemon's socket. The message
-comes from deep inside an HTTP client and names neither.
+**Two different causes produce this one sentence**, and it names neither: it
+comes from deep inside an HTTP client or the sandbox layer, with no path and no
+number in it. `preflight.sh` checks both, so start there.
+
+**One: the daemon's socket.** `DOCKER_GID` does not match the group that owns it.
 
 ```bash
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine stat -c '%g' /var/run/docker.sock
 ```
 
-On Docker Desktop that is `0`; on a Linux host it is the `docker` group.
-`preflight.sh` runs exactly this and refuses if they disagree.
+On Docker Desktop that is `0`; on a Linux host it is the `docker` group's id. If
+this is the cause, the Runner fails at **startup** and never reaches a job.
+
+**Two: `RUNNER_WORK_DIR` belongs to somebody else.** Compose creates a missing
+bind-mount source **as root, mode 0755**, and the Runner runs as uid **65532**.
+The socket then works perfectly, the Runner registers, claims a job — and every
+single one fails at once, which is how to tell the two apart.
+
+```bash
+sudo mkdir -p /srv/algojudge/runner-work
+sudo chown 65532:65532 /srv/algojudge/runner-work
+```
+
+Measured 2026-09-01 on a stack whose socket was reachable and whose every
+submission still failed.
 
 ## nginx will not start
 

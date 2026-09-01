@@ -83,6 +83,27 @@ case ",${COMPOSE_PROFILES:-}," in
        and restart for ever. Write DOCKER_GID=$socket_gid."
         fi
 
+        # **Whether the Runner can write into it, asked of the daemon.**
+        #
+        # `Compose creates it` is true and is the trap: it creates it as
+        # **root**, mode 0755, and the Runner runs as uid 65532. Every job then
+        # fails with `Permission denied (os error 13)` from deep inside the
+        # sandbox layer -- the same sentence a wrong DOCKER_GID produces, which
+        # is why this is worth separating here rather than leaving to whoever
+        # reads the log. Measured 2026-09-01: the socket was reachable and every
+        # submission still failed.
+        #
+        # Probed in a container, like the socket's group above, because this
+        # path belongs to the daemon's filesystem rather than to this shell's.
+        if [ -n "${RUNNER_WORK_DIR:-}" ] && [ "${RUNNER_WORK_DIR#/}" != "$RUNNER_WORK_DIR" ]; then
+            if ! MSYS_NO_PATHCONV=1 docker run --rm -u 65532:65532                 -v "$RUNNER_WORK_DIR:/work" "nginx:$(setting NGINX_TAG 1.27-alpine)"                 sh -c 'touch /work/.algojudge-probe && rm -f /work/.algojudge-probe'                 >/dev/null 2>&1; then
+                report "the Runner cannot write into RUNNER_WORK_DIR. It runs as uid 65532 and
+       the directory is somebody else's -- root's, if Docker created it. Every
+       job would fail with 'Permission denied (os error 13)':
+           sudo mkdir -p $RUNNER_WORK_DIR && sudo chown 65532:65532 $RUNNER_WORK_DIR"
+            fi
+        fi
+
         # **The driver, not only the version.** A cgroup parent is a path under
         # `cgroupfs`; under `systemd` -- the default on RHEL 9+, Fedora and
         # Ubuntu -- the Runner gives up on measuring and says so once, at `info`.

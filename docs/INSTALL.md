@@ -78,12 +78,26 @@ chmod 600 .env
 AJ_ADMIN_TOKEN=          # openssl rand -base64 36
 POSTGRES_PASSWORD=       # openssl rand -base64 36, a different one
 RUNNER_WORK_DIR=         # an ABSOLUTE host path, e.g. /srv/algojudge/runner-work
+                         # make it and give it to uid 65532 — see below
 ```
 
 `RUNNER_WORK_DIR` must be absolute because the Runner hands it to the Docker
 daemon, and **a path the daemon cannot open becomes an empty directory rather
 than an error** — every submission then runs against nothing and no test fails
 visibly. `preflight.sh` refuses a relative one for that reason.
+
+**Make it yourself, and give it to uid 65532**, before the first start:
+
+```bash
+sudo mkdir -p /srv/algojudge/runner-work
+sudo chown 65532:65532 /srv/algojudge/runner-work
+```
+
+Compose creates a missing bind-mount source as **root, mode 0755**, and the
+Runner runs unprivileged. It then starts, reaches the daemon, registers, claims a
+job and fails every one of them with `Permission denied (os error 13)` — the same
+sentence a wrong `DOCKER_GID` produces, which is why `preflight.sh` probes the
+directory separately and says which of the two it is.
 
 Two more worth reading before the first start:
 

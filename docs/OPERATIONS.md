@@ -399,7 +399,7 @@ Until a release exists, `ghcr.io/algojudge/*` is empty. To run this stack,
 build the product repositories and tag them as published:
 
 ```bash
-docker build -f AlgoJudge.Server/Dockerfile -t ghcr.io/algojudge/algojudge-server:1 AlgoJudge-Server
+docker build -f AlgoJudge-Server/AlgoJudge.Server/Dockerfile -t ghcr.io/algojudge/algojudge-server:1 AlgoJudge-Server
 docker build -t ghcr.io/algojudge/algojudge-client:1 AlgoJudge-Client
 docker build -t ghcr.io/algojudge/algojudge-runner:1 AlgoJudge-Runner
 for lang in gcc clang python pypy; do
@@ -409,6 +409,12 @@ done
 # Only for the `external-runner` profile.
 docker build -t ghcr.io/algojudge/algojudge-external-runner:1 AlgoJudge-External-Runner
 ```
+
+**`-f` is relative to where you are standing, not to the context.** The line
+above said `-f AlgoJudge.Server/Dockerfile` until 2026-09-01 and failed from the
+workspace root with `lstat AlgoJudge.Server: no such file or directory` — the
+only one of the eight builds that had a path in it, and the only one that was
+wrong.
 
 **Rebuild rather than reuse a tag you already have.** These images are pinned by
 a moving tag, so a stale local `:1` is silently whatever you built last month —
