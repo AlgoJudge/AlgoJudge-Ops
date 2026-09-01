@@ -172,6 +172,32 @@ compose() { docker compose --project-directory "$ROOT" "$@"; }
 # mangled and a non-interactive cron run fails outright.
 aj_admin() { compose exec -T server aj-admin "$@"; }
 
+# **The `image.source` label each release workflow sets, one per repository.**
+#
+# `docker image prune --filter label=key=value` matches the value **exactly**,
+# and the workflows set `<server>/<owner>/<repo>` — so the organisation's URL on
+# its own matched nothing at all, and every prune this repository ran reclaimed
+# not one image. Measured 2026-09-01 against an image carrying the real label.
+#
+# Four repositories cover all eight images: the Runner's own workflow builds and
+# labels its four `lang-*` images too.
+AJ_IMAGE_SOURCES="AlgoJudge-Server AlgoJudge-Client AlgoJudge-Runner AlgoJudge-External-Runner"
+
+# Removes images this project has stopped using, and nothing else. Prints one
+# line per repository that gave something back, and nothing for the rest.
+prune_our_images() {
+    local repository reclaimed
+    for repository in $AJ_IMAGE_SOURCES; do
+        reclaimed=$(docker image prune -f \
+            --filter "label=org.opencontainers.image.source=https://github.com/AlgoJudge/$repository" \
+            2>/dev/null | tail -1)
+        case "$reclaimed" in
+            "" | *"0B"*) : ;;
+            *) printf '  %s: %s\n' "$repository" "$reclaimed" ;;
+        esac
+    done
+}
+
 # Whether the `server` service is running here at all. A Runner-only host has no
 # Server to ask, and several scripts have a different answer in that case rather
 # than an error.
@@ -186,8 +212,30 @@ have_server() { [ -n "$(compose ps -q server 2>/dev/null)" ]; }
 wait_healthy() {
     local timeout=${1:-120} waited=0
     while [ "$waited" -lt "$timeout" ]; do
-        if ! compose ps --format '{{.Service}} {{.Health}} {{.State}}' \
-            | awk '$3 == "running" && $2 != "healthy" && $2 != "" { bad = 1 } END { exit bad }'; then
+        # **`-a`, and a delimiter that cannot appear in a value.** Two things
+        # made the first version of this report a crash-looping container as
+        # healthy, and both had to be fixed together:
+        #
+        #   * without `-a`, a container that has **exited** is not listed at
+        #     all, so nothing here could see it;
+        #   * with the default field separator, a service whose image declares
+        #     **no health check** collapses its empty Health column, State
+        #     lands in `$2`, and every test below reads the wrong field.
+        #
+        # Both Runners have no health check, so the second was not theoretical:
+        # `up --wait` reported them healthy while one was failing to sign in.
+        # Measured 2026-09-01.
+        if ! compose ps -a --format '{{.Service}}|{{.Health}}|{{.State}}' \
+            | awk -F'|' '
+                  # Anything not running is not healthy: restarting, exited,
+                  # dead, created, paused.
+                  $3 != "running" { bad = 1 }
+                  # Running and declaring health: it has to say healthy.
+                  # Running and declaring none is a pass — that is either
+                  # Runner, and refusing it would block every `up` here.
+                  $3 == "running" && $2 != "" && $2 != "healthy" { bad = 1 }
+                  END { exit bad }
+              '; then
             sleep 3
             waited=$((waited + 3))
             continue

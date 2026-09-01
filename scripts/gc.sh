@@ -57,12 +57,16 @@ fi
 # ── Images ──────────────────────────────────────────────────────────────────
 
 if [ "$(setting GC_PRUNE_IMAGES true)" = "true" ]; then
-    # **Filtered by the label every AlgoJudge image carries**, which the release
-    # workflow sets. An image without it is somebody else's and is left alone.
-    freed=$(docker image prune -f \
-        --filter "label=org.opencontainers.image.source=https://github.com/AlgoJudge" \
-        2>/dev/null | tail -1)
-    log "images: ${freed:-nothing to reclaim}"
+    # **Filtered per repository**, because a label filter matches its value
+    # exactly and every image carries its own `<owner>/<repo>`. An image
+    # without one of those labels is somebody else's and is left alone.
+    reclaimed=$(prune_our_images)
+    if [ -n "$reclaimed" ]; then
+        log "images:"
+        printf '%s\n' "$reclaimed"
+    else
+        log "images: nothing to reclaim"
+    fi
 fi
 
 # ── Logs ────────────────────────────────────────────────────────────────────
