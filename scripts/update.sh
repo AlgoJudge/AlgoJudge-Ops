@@ -45,7 +45,7 @@ LOCK_FILE="$ROOT/state/current.lock"
 # is the honest limit of a digest that no registry has.
 digests() {
     local service id reference digest
-    for service in server client runner; do
+    for service in server client runner external-runner; do
         id=$(compose ps -q "$service" 2>/dev/null | head -1)
         [ -n "$id" ] || continue
         reference=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null)
@@ -90,11 +90,26 @@ $dry_run || compose pull --quiet
 # reference resolved to at the time. After a pull, the same reference resolves to
 # whatever arrived. Those two ids differing is exactly "something new", with no
 # second opinion about what this service's image is called.
+#
+# **Only the services this installation actually selects.** A service no active
+# profile names has no container, and the branch below reads "no container" as
+# "not started yet, so starting it is the update" — which on a host without the
+# `external-runner` profile would report a change on every single run and close
+# the installation for nothing. Asked of Compose, so this loop and `compose.yaml`
+# cannot come to disagree about what is selected.
+selected=$(compose config --services 2>/dev/null)
+[ -n "$selected" ] || die "docker compose config --services returned nothing. There is no
+       way to tell which services this installation runs, and guessing is how an
+       update closes a stack it should have left alone."
+
 changed=""
-for service in server client runner; do
+for service in server client runner external-runner; do
+    printf '%s
+' "$selected" | grep -qxF "$service" || continue
+
     id=$(compose ps -q "$service" 2>/dev/null | head -1)
     if [ -z "$id" ]; then
-        # Not running: starting it is the update.
+        # Selected but not running: starting it is the update.
         changed="$changed $service(new)"
         continue
     fi

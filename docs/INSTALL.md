@@ -13,7 +13,30 @@ From an empty directory to an installation that judges a submission.
 
 - **Docker with Compose v2 or later**, and cgroup **v2**. The Runner refuses to
   start on v1 unless deliberately overridden, and CI asserts v2 rather than
-  trusting the flag.
+  trusting the flag. Compose v2 is enough because every value here is passed
+  through `environment:` — nothing in this repository uses the `env_file:` form
+  that needs 2.24.
+- **This stack does not report peak memory, and that is worth knowing rather
+  than discovering.** Every limit is enforced and every submission judged; what
+  is missing is the number beside the verdict, announced by one `info` line in
+  the Runner's log and nowhere else.
+
+  It needs **two** things, and this repository supplies neither by itself. The
+  daemon's cgroup driver must be `cgroupfs` — under `systemd`, the default on
+  RHEL 9+, Fedora and Ubuntu, a cgroup parent is not a path at all:
+
+  ```bash
+  stat -fc %T /sys/fs/cgroup                 # cgroup2fs
+  docker info --format '{{.CgroupDriver}}'   # cgroupfs
+  ```
+
+  And the Runner has to be able to **create** a cgroup, which means a writable
+  `/sys/fs/cgroup` in its container. `compose.yaml` mounts none, deliberately:
+  handing a container write access to the host's cgroup tree is a decision an
+  installation makes, not a default it inherits. Until it does, the driver alone
+  changes nothing.
+
+  `preflight.sh` warns about the driver, which is the half it can see.
 - **`bash`, `openssl`, `find`, `du`, `df`** — the scripts use nothing else.
 - **Disk for backups**, ideally on a **different filesystem** from the
   PostgreSQL volume. On one filesystem no reserve setting can guarantee that a
@@ -38,9 +61,15 @@ There are **seven**: `algojudge-server`, `algojudge-client`, `algojudge-runner`,
 `lang-gcc`, `lang-clang`, `lang-python`, `lang-pypy`. The workflow cannot do it;
 somebody with access to the organisation's packages must.
 
-> **Not done yet.** No release has been cut, so none of the seven exists. Until
-> then this stack runs only against images built from the product repositories
-> and tagged locally — see `docs/OPERATIONS.md`.
+**An eighth, if you run the `external-runner` profile, and it is not like the
+other seven.** `algojudge-external-runner` is built from a **private**
+repository, so whether that package is ever made public is a decision somebody
+has to take rather than a step in a list. If it is not, this is the one profile
+in this stack that needs a `docker login ghcr.io` before `up`.
+
+> **Not done yet.** No release has been cut, so none of them exists. Until then
+> this stack runs only against images built from the product repositories and
+> tagged locally — see `docs/OPERATIONS.md`.
 
 ## 1. Clone and configure
 
@@ -58,12 +87,26 @@ chmod 600 .env
 AJ_ADMIN_TOKEN=          # openssl rand -base64 36
 POSTGRES_PASSWORD=       # openssl rand -base64 36, a different one
 RUNNER_WORK_DIR=         # an ABSOLUTE host path, e.g. /srv/algojudge/runner-work
+                         # make it and give it to uid 65532 — see below
 ```
 
 `RUNNER_WORK_DIR` must be absolute because the Runner hands it to the Docker
 daemon, and **a path the daemon cannot open becomes an empty directory rather
 than an error** — every submission then runs against nothing and no test fails
 visibly. `preflight.sh` refuses a relative one for that reason.
+
+**Make it yourself, and give it to uid 65532**, before the first start:
+
+```bash
+sudo mkdir -p /srv/algojudge/runner-work
+sudo chown 65532:65532 /srv/algojudge/runner-work
+```
+
+Compose creates a missing bind-mount source as **root, mode 0755**, and the
+Runner runs unprivileged. It then starts, reaches the daemon, registers, claims a
+job and fails every one of them with `Permission denied (os error 13)` — the same
+sentence a wrong `DOCKER_GID` produces, which is why `preflight.sh` probes the
+directory separately and says which of the two it is.
 
 Two more worth reading before the first start:
 
@@ -138,7 +181,55 @@ In the panel: **Runners**, and approve the one that appeared. Its logs say
 Afterwards, submit something and watch it get a verdict. Until that has happened
 once, the installation is not known to work.
 
-## 6. Optionally, the schedule
+## 6. Optionally, an external judge
+
+Skip this unless some of your problems are to be judged by an external archive
+rather than here. It needs an **account at that archive**, and every submission
+this installation forwards is made under it and stays on it.
+
+In `.env`:
+
+```ini
+COMPOSE_PROFILES=edge,app,data,runner,external-runner
+EXTERNAL_JUDGE_USERNAME=
+EXTERNAL_JUDGE_PASSWORD=
+```
+
+Then three things, and **two of them are not in any file here**:
+
+1. **Turn external judging on for the installation.** It is off by default, and
+   while it is off the queue is simply empty — no error anywhere, and a Runner
+   that looks perfectly healthy. Before the first start, in
+   `preconfig/algojudge.yml`:
+
+   ```yaml
+   instance:
+     externalJudgingEnabled: true
+     externalFetchHosts:
+       - onlinejudge.org
+   ```
+
+   Afterwards it is a manager's switch in the panel.
+2. **Approve it in the panel**, separately from your other Runners. It has its
+   own identity and its own approval, and it waits with no timeout exactly as
+   they do.
+3. **A problem has to be created as an external one** — typed `uva@1`, with the
+   archive's problem number in its version's `props`. `docs/UVA.md` in
+   `AlgoJudge-External-Runner` has the calls.
+
+**The verdict is the archive's opinion, not this installation's.** Their
+compilers, their limits, their tests. What you get back is what they said.
+
+It needs **no inbound port, no Docker socket and no work directory**: it dials
+out to the Server and to the archive, and accepts nothing. It has no health
+check either — the image has no shell to run one with — so `docker compose ps`
+shows an empty health column for it for ever, and its log is the instrument:
+
+```bash
+docker compose logs -f external-runner
+```
+
+## 7. Optionally, the schedule
 
 ```bash
 ./scripts/install-cron.sh --print     # what it would install
@@ -186,6 +277,12 @@ approval.
 Runner sits on the same host as the database, and access to the Docker socket is
 equivalent to root on that host.
 
+The External Runner runs the same way — `COMPOSE_PROFILES=external-runner` with
+`SERVER_URL` and its own `EXTERNAL_RUNNER_NAME` — and the argument for moving it
+is weaker: it starts no containers, holds no socket and runs nothing untrusted.
+What it does hold is a credential to somebody else's service, so the host it sits
+on is one whose `.env` you are willing to trust with that.
+
 ### Your own reverse proxy
 
 `COMPOSE_PROFILES=app,data`. The Server and the Client are published on
@@ -201,5 +298,32 @@ equivalent to root on that host.
 - send `X-Forwarded-Proto`, or the Server's HTTPS redirect loops.
 
 Serving the two on different origins works, and then `API_BASE_URL` is the
-Server's public address and the Client's origin goes in the Server's
-`AJ_Cors__AllowedOrigins`.
+Server's public address, the Client's origin goes in the Server's
+`AJ_Cors__AllowedOrigins`, and **`APP_BASE_URL` is where the browser reaches the
+Client**. Leaving that last one empty on two origins is the mistake worth naming:
+a sign-in through an identity provider ends at a bare `/activities`, which the
+browser resolves against the API's origin and where it finds a 404.
+
+### If you use LTI
+
+`AJ_PublicApiUrl` is **deliberately not set by this stack**, and setting it in
+`compose.yaml` would be worse than leaving it out: two of the four places that
+read it accept an empty string as an answer, and an environment variable set to
+nothing is not the same as one that was never set. Launches and platforms
+registered by hand work without it, from the address of the request.
+
+**Dynamic registration is the exception** — it refuses unless the value resolves
+to an absolute `http(s)` address. If you use it, write an override rather than
+editing `compose.yaml`:
+
+```yaml
+# state/lti.compose.yaml
+services:
+  server:
+    environment:
+      AJ_PublicApiUrl: https://your.domain/api/v1
+```
+
+```bash
+docker compose -f compose.yaml -f state/lti.compose.yaml up -d
+```

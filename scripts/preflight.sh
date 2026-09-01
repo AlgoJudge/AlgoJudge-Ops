@@ -82,6 +82,75 @@ case ",${COMPOSE_PROFILES:-}," in
        through that group, so as written it will start, fail to open the socket,
        and restart for ever. Write DOCKER_GID=$socket_gid."
         fi
+
+        # **Whether the Runner can write into it, asked of the daemon.**
+        #
+        # `Compose creates it` is true and is the trap: it creates it as
+        # **root**, mode 0755, and the Runner runs as uid 65532. Every job then
+        # fails with `Permission denied (os error 13)` from deep inside the
+        # sandbox layer -- the same sentence a wrong DOCKER_GID produces, which
+        # is why this is worth separating here rather than leaving to whoever
+        # reads the log. Measured 2026-09-01: the socket was reachable and every
+        # submission still failed.
+        #
+        # Probed in a container, like the socket's group above, because this
+        # path belongs to the daemon's filesystem rather than to this shell's.
+        if [ -n "${RUNNER_WORK_DIR:-}" ] && [ "${RUNNER_WORK_DIR#/}" != "$RUNNER_WORK_DIR" ]; then
+            if ! MSYS_NO_PATHCONV=1 docker run --rm -u 65532:65532                 -v "$RUNNER_WORK_DIR:/work" "nginx:$(setting NGINX_TAG 1.27-alpine)"                 sh -c 'touch /work/.algojudge-probe && rm -f /work/.algojudge-probe'                 >/dev/null 2>&1; then
+                report "the Runner cannot write into RUNNER_WORK_DIR. It runs as uid 65532 and
+       the directory is somebody else's -- root's, if Docker created it. Every
+       job would fail with 'Permission denied (os error 13)':
+           sudo mkdir -p $RUNNER_WORK_DIR && sudo chown 65532:65532 $RUNNER_WORK_DIR"
+            fi
+        fi
+
+        # **The driver, not only the version.** A cgroup parent is a path under
+        # `cgroupfs`; under `systemd` -- the default on RHEL 9+, Fedora and
+        # Ubuntu -- the Runner gives up on measuring and says so once, at `info`.
+        # Every limit is still enforced and every submission is still judged,
+        # which is why this warns rather than refusing: what is lost is the
+        # memory figure beside a verdict, and losing it silently is the part
+        # worth a sentence.
+        driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null | tr -d '[:space:]')
+        if [ -n "$driver" ] && [ "$driver" != "cgroupfs" ]; then
+            warn "the daemon's cgroup driver is '$driver', not cgroupfs. That is one of
+       the two things peak memory needs -- the other is a writable cgroup tree in
+       the Runner's container, which this stack does not mount. Verdicts arrive
+       without the figure either way; limits are still enforced.
+       docs/INSTALL.md has the whole of it."
+        fi
+        ;;
+esac
+
+# ── The external Runner's account ───────────────────────────────────────────
+#
+# **A `case` of its own, and not a second branch of the one above.** A `case`
+# runs the first pattern that matches and stops, and the ordinary profile set for
+# a host running both is `edge,app,data,runner,external-runner` -- which matches
+# `*,runner,*` first. As a branch, this check would have been skipped on exactly
+# the arrangement it exists for.
+#
+# **Refused here rather than by the container.** The two values are `:-` in
+# `compose.yaml` because Compose interpolates that file before it applies
+# profiles, so a required marker there would break the four arrangements that
+# never run this service. Empty therefore reaches the container, which exits
+# while reading its configuration -- and behind `restart: unless-stopped` that is
+# a crash loop, in an image with no shell to look into and no health check to go
+# red.
+
+case ",${COMPOSE_PROFILES:-}," in
+    *,external-runner,*)
+        if [ -z "${EXTERNAL_JUDGE_USERNAME:-}" ] || [ -z "${EXTERNAL_JUDGE_PASSWORD:-}" ]; then
+            report "the 'external-runner' profile is active and the judging system's account
+       is not filled in. It signs in to $(setting EXTERNAL_JUDGE uva) under that account and
+       refuses to start without it, over and over. Fill both in, or drop
+       'external-runner' from COMPOSE_PROFILES."
+        fi
+
+        log "the 'external-runner' profile is on. Two things this script cannot check
+       decide whether it is ever handed work: external judging must be turned on
+       for this installation, and an administrator must approve the Runner in the
+       panel. Until both, its queue is empty and it looks perfectly healthy."
         ;;
 esac
 
@@ -133,6 +202,42 @@ elif [ "$networks" != "none" ]; then
        is recorded as the proxy's. Deliberate behind somebody else's proxy."
     fi
 fi
+
+# ── Storage ─────────────────────────────────────────────────────────────────
+#
+# **The Server refuses at startup when the kind it was given has no path or no
+# bucket**, and it refuses well -- by name. The only thing gained here is that
+# the sentence arrives before the container does, and from a file the operator
+# is already reading.
+
+case "$(setting STORAGE_KIND postgres)" in
+    postgres) : ;;
+    filesystem)
+        [ -n "${STORAGE_PATH:-}" ] || report "STORAGE_KIND is filesystem and STORAGE_PATH is empty. The
+       Server will not start without it."
+        ;;
+    s3)
+        for name in STORAGE_ENDPOINT STORAGE_BUCKET STORAGE_ACCESS_KEY STORAGE_SECRET_KEY; do
+            [ -n "${!name:-}" ] || report "STORAGE_KIND is s3 and $name is empty. All four are
+       required together, and the Server will not start without them."
+        done
+        ;;
+    *)
+        report "STORAGE_KIND is '$(setting STORAGE_KIND postgres)', which is none of postgres,
+       filesystem or s3. The Server refuses an unknown store kind at startup."
+        ;;
+esac
+
+# **A dump is no longer the whole backup once files live outside the database.**
+# `scripts/backup.sh` says the same thing when it runs; said here it arrives
+# before the first one is taken rather than after.
+case "$(setting STORAGE_KIND postgres)" in
+    filesystem | s3)
+        log "STORAGE_KIND is $(setting STORAGE_KIND postgres): uploaded files are stored outside
+       the database, so a pg_dump alone no longer restores this installation.
+       Back the store up in step with it -- docs/OPERATIONS.md."
+        ;;
+esac
 
 # ── TLS ─────────────────────────────────────────────────────────────────────
 

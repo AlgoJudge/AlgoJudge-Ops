@@ -50,7 +50,8 @@ TEXT
 }
 
 have_server || die "no server container here. Maintenance is the Server's switch;
-       a Runner-only host has nothing to throw."
+       a host that runs only Runners -- sandboxing or forwarding -- has nothing
+       to throw."
 
 # Waits for the drain to finish.
 #

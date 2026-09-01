@@ -31,6 +31,14 @@ laboratory", so the Server refuses and names the address you should have written
 
 `STORAGE_KIND` is empty or misspelled. It is `postgres`, `filesystem` or `s3`.
 
+### It names a storage setting that is empty
+
+`filesystem` needs `STORAGE_PATH`; `s3` needs `STORAGE_ENDPOINT`,
+`STORAGE_BUCKET`, `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY`, all four. The
+Server refuses at startup naming the one it wanted, and `preflight.sh` refuses
+before that. Neither is read while `STORAGE_KIND` is `postgres`, which is why
+they ship empty.
+
 ## The API answers 404 and you are sure the path is right
 
 **`/health` is not the health endpoint. `/api/v1/health` is.**
@@ -87,17 +95,86 @@ In order of how often it is each one:
    Note that **tags are read once, at the first registration** — changing the
    variable later does nothing.
 
+## Nothing **external** is being judged
+
+A different list, because the ordinary causes are not the causes here. In order
+of how often it is each one:
+
+1. **External judging is off for this installation.** It is off by default, and
+   while it is off the Server hands this Runner nothing — an empty queue is not
+   an error, so there is nothing in any log. Turn it on in the manager panel, or
+   set `instance.externalJudgingEnabled` in `preconfig/` before a first start.
+2. **The External Runner has not been approved.** Separately from your other
+   Runners: it is a second identity with a second approval.
+3. **The problem was not created as an external one.** It has to be typed
+   `uva@1` and marked external; a locally typed problem is never offered to a
+   forwarding Runner, and that pairing is by equality in both directions.
+4. **The version's `props` does not name the archive's problem number.** That is
+   refused by name, before anything leaves this installation.
+5. **Tags.** As with any Runner, and read once at the first registration.
+
+## The external Runner restarts every few seconds
+
+The account at the judging system is empty or wrong. It refuses while reading its
+configuration — before the identity key, before registration — and
+`restart: unless-stopped` turns that into a loop.
+
+```bash
+docker compose logs external-runner | tail -20
+```
+
+The refusal names the setting: `AJ_External__Username is required`. Fill both
+values in, and note that `preflight.sh` refuses ahead of this when the profile is
+active, so `make up` never gets that far.
+
+**A password with a leading or trailing space is not the cause.** It is passed
+through exactly as written, deliberately — trimming it broke a sign-in once.
+
+## The archive says the account does not exist
+
+uHunt answers `0` for a username it does not know, and `0` parses as a number.
+That silently made every poll return nothing until the lookup started refusing a
+uid of `0` by name. Check the username at the archive itself; it is the same one
+a person signs in with.
+
+## A solution reached the archive twice
+
+The External Runner was restarted or killed while a submission was pending there.
+The set it is waiting on lives in memory by design, the Server reclaims the lease
+and requeues the job, and the job is sent again.
+
+Nothing here can dedupe that — the archive received the first one. What avoids
+it is draining before a window; `docs/OPERATIONS.md` under *Maintenance* has the
+numbers, including why a 300-second forced close and a fifteen-minute external
+job do not meet on their own.
+
 ## `Permission denied (os error 13)` in the Runner
 
-`DOCKER_GID` does not match the group that owns the daemon's socket. The message
-comes from deep inside an HTTP client and names neither.
+**Two different causes produce this one sentence**, and it names neither: it
+comes from deep inside an HTTP client or the sandbox layer, with no path and no
+number in it. `preflight.sh` checks both, so start there.
+
+**One: the daemon's socket.** `DOCKER_GID` does not match the group that owns it.
 
 ```bash
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine stat -c '%g' /var/run/docker.sock
 ```
 
-On Docker Desktop that is `0`; on a Linux host it is the `docker` group.
-`preflight.sh` runs exactly this and refuses if they disagree.
+On Docker Desktop that is `0`; on a Linux host it is the `docker` group's id. If
+this is the cause, the Runner fails at **startup** and never reaches a job.
+
+**Two: `RUNNER_WORK_DIR` belongs to somebody else.** Compose creates a missing
+bind-mount source **as root, mode 0755**, and the Runner runs as uid **65532**.
+The socket then works perfectly, the Runner registers, claims a job — and every
+single one fails at once, which is how to tell the two apart.
+
+```bash
+sudo mkdir -p /srv/algojudge/runner-work
+sudo chown 65532:65532 /srv/algojudge/runner-work
+```
+
+Measured 2026-09-01 on a stack whose socket was reachable and whose every
+submission still failed.
 
 ## nginx will not start
 
@@ -129,6 +206,15 @@ refuse to start. `compose.yaml` gets it right and
 
 The major is pinned on purpose. An unpinned `postgres:latest` rolling over to 18
 is how this was found.
+
+## `docker compose ps` shows no health for a Runner
+
+Both Runners show an empty health column, for ever, and neither is a fault. The
+Runner's image declares no health check and the External Runner's cannot have one
+— it is `distroless/static`, with no shell, no curl and no wget, and it listens
+on no port. `docker compose up --wait` therefore calls both ready as soon as they
+are running, which they are even while one of them is failing to sign in. Read
+their logs.
 
 ## The stack is up but the browser shows nothing
 
