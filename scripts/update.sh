@@ -191,7 +191,7 @@ if wait_healthy 120; then
     # Only images this project has stopped using. Never a global prune: the host
     # may run other things, and `docker system prune` does not know that.
     log "removing images this project no longer uses"
-    docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/AlgoJudge" >/dev/null || true
+    prune_our_images >/dev/null || true
 
     log "updated."
     exit 0
