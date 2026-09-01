@@ -122,12 +122,6 @@ fi
 
 # ── The external Runner's account ───────────────────────────────────────────
 #
-# **A `case` of its own, and not a second branch of the one above.** A `case`
-# runs the first pattern that matches and stops, and the ordinary profile set for
-# a host running both is `edge,app,data,runner,external-runner` -- which matches
-# `*,runner,*` first. As a branch, this check would have been skipped on exactly
-# the arrangement it exists for.
-#
 # **Refused here rather than by the container.** The two values are `:-` in
 # `compose.yaml` because Compose interpolates that file before it applies
 # profiles, so a required marker there would break the four arrangements that

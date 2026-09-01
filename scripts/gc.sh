@@ -31,9 +31,9 @@ RETENTION=$(setting GC_TMP_RETENTION_DAYS 7)
 
 work=${RUNNER_WORK_DIR:-}
 if [ -n "$work" ] && [ -d "$work" ]; then
-    # `-mmin` rather than `-mtime` for the floor, and a whole day of margin: a
-    # long evaluation is minutes, not days, so anything older than the retention
-    # window is certainly finished. Deleting a directory a Runner is still using
+    # **A whole day of margin, and that is the point of the units.** An
+    # evaluation takes minutes, so a directory older than the retention window in
+    # whole days is certainly finished. Deleting one a Runner is still using
     # would fail an evaluation that was going to succeed.
     removed=$(find "$work" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION" -print 2>/dev/null | wc -l)
     if [ "$removed" -gt 0 ]; then
