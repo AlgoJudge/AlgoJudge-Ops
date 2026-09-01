@@ -24,6 +24,19 @@ is what waits.
 expires, the reaper puts it back on the queue — one evaluation done twice,
 against an operator held hostage by one wedged Runner.
 
+**With the `external-runner` profile on, that sentence needs a qualification.**
+The evaluation done twice is then a submission made twice **on somebody else's
+service, under this installation's account there** — the archive has already
+received it, and what is repeated is the sending rather than the judging. The
+External Runner keeps the set it is waiting on in memory only, so a restart
+during a window loses it and every job in it is sent again.
+
+An external job may legitimately be held for fifteen minutes, and
+`Maintenance:ForceAfterSeconds` is 300, so the two do not meet on their own.
+Before a window that will restart that container: raise `ForceAfterSeconds` past
+`AJ_External__PendingTimeoutSeconds`, wait for the queue to be quiet, or accept
+the duplicate.
+
 ### The way that is not a way
 
 **Do not put a maintenance page in front of nginx.** It is the obvious idea and
@@ -73,6 +86,12 @@ into the database:
 docker compose exec -T server aj-admin storage status
 docker compose exec -T server aj-admin storage migrate
 ```
+
+**Where `filesystem` puts them**: the named volume `objects`, mounted at
+`/var/lib/algojudge/objects` in the Server's container and reachable from the
+host as `algojudge_objects`. `STORAGE_PATH` moves the path inside the container,
+not the volume. `s3` puts them wherever `STORAGE_ENDPOINT` points, and backing
+that up is that service's business rather than this stack's.
 
 ### A dump is not a configuration file
 
@@ -201,6 +220,13 @@ Server is not an error — with `MIGRATE_ON_START=true` the Server migrates it
 forward on the next start — but it is one-way, and you are told before rather
 than after.
 
+**Neither Runner is stopped by it**, deliberately — they hold no state a restore
+touches, and stopping the sandboxing one would abandon whatever it is running.
+Both simply fail to renew their leases while the Server is down and give their
+jobs up; the Server reclaims those and requeues them, so a restore of a few
+minutes costs nothing. A long one costs the External Runner's pending set, which
+is the duplicate submission the *Maintenance* section describes.
+
 **Rehearse it.** A backup with no tested restore is a hypothesis. The honest
 rehearsal is on a spare host: clone this repository, copy `.env` and one dump,
 `docker compose up -d --wait`, `./scripts/restore.sh`, then sign in and look at
@@ -256,6 +282,13 @@ nothing on its own.
 A clean drain is `maintenance.sh on --wait-closed` on the **Server** first, which
 `update.sh` does. Never `docker stop` on a Runner as a way of being careful.
 
+**The External Runner reaches the same conclusion by a different route.** It
+handles no `SIGTERM` either, so it has no grace period at all — one would buy
+nothing. What it loses when it dies is not an evaluation in progress but a list
+of submissions an archive has not answered for yet, and each of those is sent to
+that archive a second time when the job is requeued. The drain is the answer
+there too, and the paragraph under *Maintenance* is the one to read first.
+
 ## Garbage collection
 
 ```bash
@@ -268,6 +301,12 @@ repository's own logs.
 
 **Never a global prune.** The host may run other things, and
 `docker system prune` does not know that.
+
+**Neither cache volume is swept here**, because neither needs it: the Runner
+bounds `runner-cache` at 10 GiB and the External Runner bounds
+`external-runner-cache` at 256 MiB, both from inside. They are named volumes, so
+they survive `down` and an image change — and deleting either costs a download
+rather than a job.
 
 **`VACUUM` and `REINDEX` are deliberately absent.** Different risk, different
 runtime — a `REINDEX` holds locks a contest would notice — and autovacuum already
@@ -300,7 +339,44 @@ Point `MAILTO` at somebody who reads it, or feed `/var/log/algojudge/*.log` into
 whatever this organisation already watches. Choosing a channel here would be
 inventing policy for you.
 
+## External judging
+
+Only with the `external-runner` profile. Nothing below applies to an
+installation that does not use it.
+
+**The verdict is somebody else's.** The submission is forwarded to an external
+archive, compiled by their compilers under their limits against their tests, and
+what comes back is what they said. This installation records it and names the
+judge behind it; it cannot explain it, re-run it, or disagree with it.
+
+**Two switches, and neither is in `.env`.** External judging is a setting of the
+installation — off by default, set in `preconfig/` before the first start or in
+the manager panel afterwards — and the Runner needs an administrator's approval
+like any other. Until both, its queue is empty: no error, no warning, and a
+container that looks perfectly healthy. That combination is the first thing to
+check when nothing external is being judged.
+
+**One account, and everything is on it.** Every submission this installation
+forwards is made under the account in `EXTERNAL_JUDGE_USERNAME` and stays on it
+at that archive, permanently. Rotating the password is a change at the archive
+and then in `.env`; there is nothing to revoke here.
+
+**One process, one judge.** A second archive is a second service with its own
+account and its own identity volume, not a second value in a list.
+
+**It has no health check and no shell.** `docker compose ps` shows an empty
+health column for it for ever; `docker compose exec` does not work on it at all.
+`docker compose logs -f external-runner` is the whole of the instrumentation, and
+it says what it registered as, what it declared, and what it is waiting for.
+
 ## Security, stated rather than implied
+
+**The External Runner is the least dangerous container here and the only one
+holding somebody else's credential.** It runs nothing untrusted, starts no
+containers, holds no socket and listens on no port — but `.env` carries a working
+account at an external archive, which is why that file is `chmod 600` and why
+rotating it is a change to make at the archive rather than here. Every submission
+forwarded under it stays on that account.
 
 **Access to the Docker socket is equivalent to root on the host.** The Runner
 needs it to start job containers. In T1 that host also runs the database, so
@@ -320,7 +396,7 @@ images are public in GHCR, so **nothing sensitive may ever be baked into one**.
 ## Running against locally built images
 
 Until a release exists, `ghcr.io/algojudge/*` is empty. To run this stack,
-build the three product repositories and tag them as published:
+build the product repositories and tag them as published:
 
 ```bash
 docker build -f AlgoJudge.Server/Dockerfile -t ghcr.io/algojudge/algojudge-server:1 AlgoJudge-Server
@@ -329,7 +405,18 @@ docker build -t ghcr.io/algojudge/algojudge-runner:1 AlgoJudge-Runner
 for lang in gcc clang python pypy; do
     docker build -t "ghcr.io/algojudge/lang-$lang:1" "AlgoJudge-Runner/images/$lang"
 done
+
+# Only for the `external-runner` profile.
+docker build -t ghcr.io/algojudge/algojudge-external-runner:1 AlgoJudge-External-Runner
 ```
+
+**Rebuild rather than reuse a tag you already have.** These images are pinned by
+a moving tag, so a stale local `:1` is silently whatever you built last month —
+`docker image inspect --format '{{.Created}}'` before trusting one.
+
+An image built this way carries none of the `org.opencontainers.image.*` labels
+a release sets, so `gc.sh` and `update.sh` will not prune it. That is convenient
+here and is not something to rely on.
 
 `compose.yaml` then runs unmodified. `update.sh` needs a registry to pull from —
 a local `registry:2` with `REGISTRY=localhost:5000/algojudge` is how the update

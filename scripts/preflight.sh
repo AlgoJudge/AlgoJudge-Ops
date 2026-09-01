@@ -82,6 +82,53 @@ case ",${COMPOSE_PROFILES:-}," in
        through that group, so as written it will start, fail to open the socket,
        and restart for ever. Write DOCKER_GID=$socket_gid."
         fi
+
+        # **The driver, not only the version.** A cgroup parent is a path under
+        # `cgroupfs`; under `systemd` -- the default on RHEL 9+, Fedora and
+        # Ubuntu -- the Runner gives up on measuring and says so once, at `info`.
+        # Every limit is still enforced and every submission is still judged,
+        # which is why this warns rather than refusing: what is lost is the
+        # memory figure beside a verdict, and losing it silently is the part
+        # worth a sentence.
+        driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null | tr -d '[:space:]')
+        if [ -n "$driver" ] && [ "$driver" != "cgroupfs" ]; then
+            warn "the daemon's cgroup driver is '$driver', not cgroupfs. Peak memory is
+       then never measured -- verdicts arrive without the figure, and one info
+       line in the Runner's log is the whole announcement. Limits are still
+       enforced. docs/INSTALL.md has the rest of it."
+        fi
+        ;;
+esac
+
+# ── The external Runner's account ───────────────────────────────────────────
+#
+# **A `case` of its own, and not a second branch of the one above.** A `case`
+# runs the first pattern that matches and stops, and the ordinary profile set for
+# a host running both is `edge,app,data,runner,external-runner` -- which matches
+# `*,runner,*` first. As a branch, this check would have been skipped on exactly
+# the arrangement it exists for.
+#
+# **Refused here rather than by the container.** The two values are `:-` in
+# `compose.yaml` because Compose interpolates that file before it applies
+# profiles, so a required marker there would break the four arrangements that
+# never run this service. Empty therefore reaches the container, which exits
+# while reading its configuration -- and behind `restart: unless-stopped` that is
+# a crash loop, in an image with no shell to look into and no health check to go
+# red.
+
+case ",${COMPOSE_PROFILES:-}," in
+    *,external-runner,*)
+        if [ -z "${EXTERNAL_JUDGE_USERNAME:-}" ] || [ -z "${EXTERNAL_JUDGE_PASSWORD:-}" ]; then
+            report "the 'external-runner' profile is active and the judging system's account
+       is not filled in. It signs in to $(setting EXTERNAL_JUDGE uva) under that account and
+       refuses to start without it, over and over. Fill both in, or drop
+       'external-runner' from COMPOSE_PROFILES."
+        fi
+
+        log "the 'external-runner' profile is on. Two things this script cannot check
+       decide whether it is ever handed work: external judging must be turned on
+       for this installation, and an administrator must approve the Runner in the
+       panel. Until both, its queue is empty and it looks perfectly healthy."
         ;;
 esac
 
@@ -133,6 +180,42 @@ elif [ "$networks" != "none" ]; then
        is recorded as the proxy's. Deliberate behind somebody else's proxy."
     fi
 fi
+
+# ── Storage ─────────────────────────────────────────────────────────────────
+#
+# **The Server refuses at startup when the kind it was given has no path or no
+# bucket**, and it refuses well -- by name. The only thing gained here is that
+# the sentence arrives before the container does, and from a file the operator
+# is already reading.
+
+case "$(setting STORAGE_KIND postgres)" in
+    postgres) : ;;
+    filesystem)
+        [ -n "${STORAGE_PATH:-}" ] || report "STORAGE_KIND is filesystem and STORAGE_PATH is empty. The
+       Server will not start without it."
+        ;;
+    s3)
+        for name in STORAGE_ENDPOINT STORAGE_BUCKET STORAGE_ACCESS_KEY STORAGE_SECRET_KEY; do
+            [ -n "${!name:-}" ] || report "STORAGE_KIND is s3 and $name is empty. All four are
+       required together, and the Server will not start without them."
+        done
+        ;;
+    *)
+        report "STORAGE_KIND is '$(setting STORAGE_KIND postgres)', which is none of postgres,
+       filesystem or s3. The Server refuses an unknown store kind at startup."
+        ;;
+esac
+
+# **A dump is no longer the whole backup once files live outside the database.**
+# `scripts/backup.sh` says the same thing when it runs; said here it arrives
+# before the first one is taken rather than after.
+case "$(setting STORAGE_KIND postgres)" in
+    filesystem | s3)
+        log "STORAGE_KIND is $(setting STORAGE_KIND postgres): uploaded files are stored outside
+       the database, so a pg_dump alone no longer restores this installation.
+       Back the store up in step with it -- docs/OPERATIONS.md."
+        ;;
+esac
 
 # ── TLS ─────────────────────────────────────────────────────────────────────
 

@@ -72,6 +72,13 @@ jobs:
           check "runner"               "runner"
           check "app,data"             "client postgres server"
 
+          # The External Runner is an addition to any arrangement, so the four
+          # above must be unchanged by it — and it has to stand alone on a host
+          # of its own, exactly as `runner` does two lines up. The second check
+          # is the one that would catch a `depends_on` added to it in passing.
+          check "edge,app,data,runner,external-runner"                 "client external-runner nginx postgres runner server"
+          check "external-runner"      "external-runner"
+
       - name: nginx accepts the configuration
         # Started rather than linted, which is this project's house answer for
         # configuration: the four defects found in this file while it was being

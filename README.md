@@ -22,16 +22,16 @@ follow, and they run through everything here:
 
 | | |
 |---|---|
-| `compose.yaml` | every service, six profile names, one file |
+| `compose.yaml` | every service, seven profile names, one file |
 | `.env.example` | every variable, with no secret values |
 | `nginx/` | TLS, one origin for both halves, and the page for when the Client is gone |
 | `scripts/` | preflight, backup, restore, update, rollback, maintenance, gc, render-tls, install-cron, check-repository, and the `lib/` they share |
 | `cron/` | the suggested schedule, installed only if you ask |
 | `docs/` | [INSTALL](docs/INSTALL.md), [OPERATIONS](docs/OPERATIONS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) |
 
-**Six profile names, five services.** `data`, `app`, `server`, `client`, `edge`
-and `runner` — the Server and the Client each carry two, which is what lets one
-half be brought up on its own.
+**Seven profile names, six services.** `data`, `app`, `server`, `client`, `edge`,
+`runner` and `external-runner` — the Server and the Client each carry two, which
+is what lets one half be brought up on its own.
 
 ## Quick start
 
@@ -71,6 +71,12 @@ them.
 | **T3** | `app,data` | your own reverse proxy in front |
 | — | `client,server,data` | one half at a time, for debugging and staged updates |
 
+**`external-runner` is an addition to any of them, not a fifth one.** Add it
+beside `runner` on one host, or run it alone on a machine of its own the way a
+Runner can. It is left out of the default because it signs in to somebody else's
+judging system under an account there — [docs/INSTALL.md](docs/INSTALL.md) says
+what it needs and what it cannot do for you.
+
 ## What it does not do
 
 - **No ACME client.** Certificates are supplied; `/.well-known/acme-challenge/`
@@ -90,9 +96,10 @@ pulled from GHCR by tag; what is assembled here is built elsewhere.
 - [AlgoJudge-Runner](https://github.com/AlgoJudge/AlgoJudge-Runner) — the
   `algojudge-runner` image and the four `lang-*` sandboxes it starts
 - [AlgoJudge-External-Runner](https://github.com/AlgoJudge/AlgoJudge-External-Runner)
-  — a second Runner, forwarding submissions to external judging systems. Not in
-  any of the arrangements above: it is deployed beside the stack, like a Runner
-  on its own machine
+  — the `algojudge-external-runner` image: a second Runner, forwarding
+  submissions to an external judging system and reporting back the verdict that
+  system reached. It is the `external-runner` profile, which is **not** in the
+  default set because it needs an account at that system
 - [AlgoJudge-Docs](https://github.com/AlgoJudge/AlgoJudge-Docs) — the public
   documentation site, whose `/install/` section is written from `docs/` here
 
