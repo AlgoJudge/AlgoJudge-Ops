@@ -216,6 +216,40 @@ backup_dir() {
     printf '%s' "$dir"
 }
 
+# **Whether this installation actually starts a service**, asked of Compose
+# rather than matched in the `COMPOSE_PROFILES` string.
+#
+# A profile is not the only way a service is selected, and that string knows about
+# one of them. `docker compose --profile external-runner up` never touches `.env`;
+# and a service redefined in an overlay **merges** with the base rather than
+# replacing it — `profiles` included — so a service can start under a profile name
+# the operator never wrote. Measured 2026-09-01 on Compose v5.3.1: base
+# `external-runner` plus an overlay naming `runner` gives
+# `profiles: ['external-runner', 'runner']`, and the service is selected by
+# `COMPOSE_PROFILES=runner` alone.
+#
+# **A better question, not a complete one.** This runs before `up`, so a
+# `--profile` flag on that later command is still invisible, and an overlay is
+# seen only when Compose is told about it the usual way, through `COMPOSE_FILE`.
+# The second argument is the profile to fall back to when Compose cannot answer
+# at all — a daemon that is down must not silently skip every check below.
+_selected_services=""
+runs_service() {
+    local service=$1 profile=$2
+    if [ -z "$_selected_services" ]; then
+        _selected_services=$(compose config --services 2>/dev/null || true)
+        [ -n "$_selected_services" ] || _selected_services="?"
+    fi
+    if [ "$_selected_services" = "?" ]; then
+        case ",${COMPOSE_PROFILES:-}," in
+            *,"$profile",*) return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
+    printf '%s
+' "$_selected_services" | grep -qxF "$service"
+}
+
 # Whether the `server` service is running here at all. A Runner-only host has no
 # Server to ask, and several scripts have a different answer in that case rather
 # than an error.

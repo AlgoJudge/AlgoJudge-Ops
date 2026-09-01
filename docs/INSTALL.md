@@ -327,3 +327,27 @@ services:
 ```bash
 docker compose -f compose.yaml -f state/lti.compose.yaml up -d
 ```
+
+**And the frame header has to go**, if your LMS is on a different name from this
+installation. `X-Frame-Options: SAMEORIGIN` — which `nginx/snippets/security-headers.conf`
+sets, and which is the whole of the frame policy here — allows framing only from
+the **same** origin, so a Moodle at `moodle.example.edu` framing this application
+at `algojudge.example.edu` is refused exactly as `DENY` would refuse it. Measured
+in a browser, not deduced.
+
+Replace it with a policy that can name the platform:
+
+```nginx
+# instead of the X-Frame-Options line
+add_header Content-Security-Policy "frame-ancestors https://moodle.example.edu" always;
+```
+
+Only an LMS and an installation served from **one** origin — routed by path — work
+under the shipped value.
+
+**A word about overlays, because the trap is silent.** Add services under **new
+names**. A service redefined in an overlay does not replace the base definition,
+it **merges** with it — `profiles` included — so an overlay naming
+`external-runner` under a different profile leaves it selected by both, and
+starts it under a profile you never wrote. Measured on Compose v5.3.1:
+`profiles: ['external-runner', 'runner']`.

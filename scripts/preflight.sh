@@ -42,10 +42,9 @@ fi
 
 # ── The Runner's work directory ─────────────────────────────────────────────
 
-case ",${COMPOSE_PROFILES:-}," in
-    *,runner,*)
+if runs_service runner runner; then
         if [ -z "${RUNNER_WORK_DIR:-}" ]; then
-            report "RUNNER_WORK_DIR is empty and the 'runner' profile is active. It must
+            report "RUNNER_WORK_DIR is empty and this installation starts the Runner. It must
        be an absolute host path — see .env.example."
         elif [ "${RUNNER_WORK_DIR#/}" = "$RUNNER_WORK_DIR" ]; then
             # Not "does it exist": Compose creates it. The check is that it is
@@ -119,8 +118,7 @@ case ",${COMPOSE_PROFILES:-}," in
        without the figure either way; limits are still enforced.
        docs/INSTALL.md has the whole of it."
         fi
-        ;;
-esac
+fi
 
 # ── The external Runner's account ───────────────────────────────────────────
 #
@@ -138,21 +136,19 @@ esac
 # a crash loop, in an image with no shell to look into and no health check to go
 # red.
 
-case ",${COMPOSE_PROFILES:-}," in
-    *,external-runner,*)
+if runs_service external-runner external-runner; then
         if [ -z "${EXTERNAL_JUDGE_USERNAME:-}" ] || [ -z "${EXTERNAL_JUDGE_PASSWORD:-}" ]; then
-            report "the 'external-runner' profile is active and the judging system's account
-       is not filled in. It signs in to $(setting EXTERNAL_JUDGE uva) under that account and
-       refuses to start without it, over and over. Fill both in, or drop
-       'external-runner' from COMPOSE_PROFILES."
+            report "this installation starts the External Runner and the judging system's
+       account is not filled in. It signs in to $(setting EXTERNAL_JUDGE uva) under that account and
+       refuses to start without it, over and over. Fill both in, or stop starting
+       that service."
         fi
 
-        log "the 'external-runner' profile is on. Two things this script cannot check
-       decide whether it is ever handed work: external judging must be turned on
+        log "this installation starts the External Runner. Two things this script cannot
+       check decide whether it is ever handed work: external judging must be on
        for this installation, and an administrator must approve the Runner in the
        panel. Until both, its queue is empty and it looks perfectly healthy."
-        ;;
-esac
+fi
 
 # ── Trusted proxies ─────────────────────────────────────────────────────────
 
@@ -241,14 +237,12 @@ esac
 
 # ── TLS ─────────────────────────────────────────────────────────────────────
 
-case ",${COMPOSE_PROFILES:-}," in
-    *,edge,*)
+if runs_service nginx edge; then
         if [ ! -s "$ROOT/certs/fullchain.pem" ] || [ ! -s "$ROOT/certs/privkey.pem" ]; then
             warn "no certificate in certs/. Run ./scripts/render-tls.sh for a self-signed
        pair — every browser will say so, and the installation will work."
         fi
-        ;;
-esac
+fi
 
 # ── The backup budget ───────────────────────────────────────────────────────
 #
