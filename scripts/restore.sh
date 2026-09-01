@@ -125,6 +125,13 @@ log "restoring"
 # nothing at all** while every check afterwards passed on data that had simply
 # never been touched. Found 2026-08-30 by changing something first and watching
 # the change survive.
+# **Taken before, because afterwards there is nothing to compare against.**
+# `--clean --if-exists` drops each relation and creates it again, so every table
+# that was really restored comes back with a **new identity**. A restore that did
+# nothing leaves the old ones exactly where they were, and that is the only
+# difference visible from outside.
+schema_before=$(psql_scalar "SELECT coalesce(sum(c.oid::bigint), 0) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'" | tr -d '[:space:]')
+
 if ! compose exec -T postgres pg_restore \
         --clean --if-exists --no-owner --no-privileges \
         -U "$(setting POSTGRES_USER algojudge)" \
@@ -134,13 +141,23 @@ if ! compose exec -T postgres pg_restore \
        them being 'relation does not exist' on a table you care about is not."
 fi
 
-# **A restore that restored nothing must not report success.** The failure above
-# proved that an empty-looking error can hide a complete no-op, so the archive's
-# own table of contents is compared against what is in the database now.
+# **A restore that restored nothing must not report success**, and counting
+# tables cannot tell. The Server creates the whole schema at start, so every
+# table is already there before a restore begins — the count this used to check
+# passes on exactly the silent no-op it was written to catch, which is the
+# failure recorded above. What a real restore changes is the **identity** of
+# every relation, because `--clean` drops and recreates them.
 restored_tables=$(psql_scalar "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'" | tr -d '[:space:]')
 if [ "${restored_tables:-0}" -lt 2 ]; then
     die "after restoring, the database holds ${restored_tables:-0} table(s). Nothing was
        restored. state/restore.log has why, and the installation is still closed."
+fi
+
+schema_after=$(psql_scalar "SELECT coalesce(sum(c.oid::bigint), 0) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'" | tr -d '[:space:]')
+if [ "${schema_after:-0}" = "${schema_before:-0}" ]; then
+    die "every table in this database is the same one it was before the restore ran,
+       so nothing was replaced. state/restore.log has why, and the installation is
+       still closed. This is the check a table count could not make."
 fi
 
 log "starting server and client"

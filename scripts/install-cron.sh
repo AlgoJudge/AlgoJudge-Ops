@@ -52,7 +52,29 @@ command -v crontab >/dev/null 2>&1 || die "the crontab command is not installed.
 # again without the line, with a warning. Nothing is ever written that does not
 # already contain everything that was there.
 
-existing=$(crontab -l 2>/dev/null | sed '/# >>> algojudge >>>/,/# <<< algojudge <<</d' || true)
+# **An unreadable crontab is not an empty one**, and the difference is the whole
+# of this file's promise. `crontab -l 2>/dev/null || true` cannot tell "this user
+# has none" from "this user may not have one" or "the spool could not be read":
+# all three give a non-zero exit and a discarded message, `existing` comes out
+# empty, and the merge below then writes a crontab holding nothing but ours —
+# destroying every unrelated job on the host, silently, from a script whose own
+# comment says that must not happen.
+crontab_error=$(mktemp)
+add_cleanup "rm -f '$crontab_error'"
+
+crontab_status=0
+current=$(crontab -l 2>"$crontab_error") || crontab_status=$?
+
+# The one failure that means "there is nothing here yet". Vixie cron, cronie and
+# busybox all say it in these words; anything else is refused rather than guessed.
+if [ "$crontab_status" -ne 0 ] && ! grep -qi 'no crontab' "$crontab_error"; then
+    die "could not read the crontab for $(id -un): $(tr '
+' ' ' <"$crontab_error")
+       Nothing was written. An unreadable crontab is not an empty one, and merging
+       into one this script cannot see would replace whatever it holds."
+fi
+
+existing=$(printf '%s' "$current" | sed '/# >>> algojudge >>>/,/# <<< algojudge <<</d')
 
 install_crontab() {
     {

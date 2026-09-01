@@ -30,8 +30,7 @@ lock
 # made all of that world-readable on the host.
 umask 077
 
-BACKUP_DIR=$(setting BACKUP_DIR "$ROOT/backups")
-case "$BACKUP_DIR" in /*) : ;; *) BACKUP_DIR="$ROOT/${BACKUP_DIR#./}" ;; esac
+BACKUP_DIR=$(backup_dir)
 KEEP_DIR="$BACKUP_DIR/keep"
 mkdir -p "$BACKUP_DIR" "$KEEP_DIR"
 # `umask` only bounds what is created; a directory that already exists keeps the
