@@ -47,10 +47,18 @@ fi
 # The Runner sweeps its own siblings when it restarts. This catches the case it
 # cannot: a Runner that was removed rather than restarted, so nothing of its own
 # ever runs again to tidy up.
-
-strays=$(docker ps -aq --filter "status=exited" --filter "name=aj-job-" 2>/dev/null | wc -l)
+#
+# **By label, and the label the Runner itself uses.** `--filter name=` is a
+# substring match, not an anchored one, so `name=aj-job-` would have taken
+# somebody else's `legacy-aj-job-archive` with it — and it matched nothing of
+# ours in the first place, because a sandbox is named `algojudge-<pid>-<random>`
+# and carries `algojudge.sandbox=1` instead (`aj-sandbox/src/docker.rs`).
+#
+# `status=exited` stays: a sandbox that is still running belongs to a Runner
+# that is still using it, including one on this host that is working perfectly.
+strays=$(docker ps -aq --filter "status=exited" --filter "label=algojudge.sandbox=1" 2>/dev/null | wc -l)
 if [ "$strays" -gt 0 ]; then
-    docker ps -aq --filter "status=exited" --filter "name=aj-job-" | xargs -r docker rm -f >/dev/null 2>&1
+    docker ps -aq --filter "status=exited" --filter "label=algojudge.sandbox=1"         | xargs -r docker rm -f >/dev/null 2>&1
     log "removed $strays exited job container(s)"
 fi
 
