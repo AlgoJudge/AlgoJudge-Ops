@@ -198,6 +198,24 @@ prune_our_images() {
     done
 }
 
+# **Where the dumps live, resolved in one place.**
+#
+# `.env.example` ships `BACKUP_DIR=./backups`, so the value is usually relative —
+# and relative to the repository, not to whatever directory a cron line happened
+# to start in. `backup.sh` had this arithmetic and `update.sh` had a hard-coded
+# `$ROOT/backups` beside it, which agreed only for the shipped default: an
+# installation that moved its backups got an empty `dump_before` recorded, and
+# `rollback.sh` then offered a recovery command with no argument on it.
+backup_dir() {
+    local dir
+    dir=$(setting BACKUP_DIR "$ROOT/backups")
+    case "$dir" in
+        /*) : ;;
+        *) dir="$ROOT/${dir#./}" ;;
+    esac
+    printf '%s' "$dir"
+}
+
 # Whether the `server` service is running here at all. A Runner-only host has no
 # Server to ask, and several scripts have a different answer in that case rather
 # than an error.

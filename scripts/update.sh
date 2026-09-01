@@ -148,8 +148,21 @@ log "backing up before the swap"
        was updated: an update with no backup in front of it is not one this
        script will do."
 
-pre_update_dump=$(find "$ROOT/backups" -maxdepth 1 -name 'algojudge-*.dump' -printf '%T@ %p\n' \
-    | sort -rn | head -1 | cut -d' ' -f2-)
+# **Where the backup actually went, not where it usually goes.** `backup.sh`
+# honours `BACKUP_DIR`; this used to look in `$ROOT/backups` regardless, so an
+# installation that moved its backups recorded an empty `dump_before` — and
+# `rollback.sh` prints that as the recovery command, at the one moment after a
+# migration when it is the only way back. A missing directory was worse: `find`
+# fails, `set -euo pipefail` ends the script with no message at all, and it does
+# so immediately after the dump was taken.
+pre_update_dump=$(find "$(backup_dir)" -maxdepth 1 -name 'algojudge-*.dump' -printf '%T@ %p\n' 2>/dev/null \
+    | sort -rn | head -1 | cut -d' ' -f2- || true)
+
+if [ -z "$pre_update_dump" ]; then
+    die "the backup reported success and no dump is in $(backup_dir). Refusing to
+       go on: the update would have nothing to roll back to, and would say so only
+       after it had already swapped the images."
+fi
 
 # ── 4. The window ───────────────────────────────────────────────────────────
 
