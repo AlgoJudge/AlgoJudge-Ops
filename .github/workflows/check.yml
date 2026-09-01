@@ -36,7 +36,7 @@ jobs:
           echo "$(ls scripts/*.sh scripts/lib/*.sh | wc -l) scripts parse."
 
   topologies:
-    name: All four arrangements resolve
+    name: Every arrangement resolves
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
