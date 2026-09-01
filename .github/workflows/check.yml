@@ -26,9 +26,8 @@ jobs:
         run: python3 scripts/check-repository.py
 
       - name: Every script parses
-        # `bash -n` rather than a linter. There is no shellcheck anywhere in this
-        # project, and adding one here would gate this repository on a rule the
-        # other ten do not follow.
+        # `bash -n` rather than a linter: no repository here runs shellcheck,
+        # and adding one would gate this one on a rule the rest do not follow.
         run: |
           for script in scripts/*.sh scripts/lib/*.sh; do
               bash -n "$script" || exit 1
@@ -42,9 +41,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: A .env with the three values that have no default
-        # Throwaway, and named for what they are. Nothing here reads a repository
-        # secret and nothing needs one: what is being checked is that the file
-        # resolves, not that it deploys.
+        # Throwaway values, named for what they are. What is checked is that the
+        # file resolves, not that it deploys, so no repository secret is needed.
         run: |
           cp .env.example .env
           sed -i 's|^AJ_ADMIN_TOKEN=.*|AJ_ADMIN_TOKEN=ci-only-not-a-deployment|' .env
@@ -52,9 +50,8 @@ jobs:
           sed -i 's|^RUNNER_WORK_DIR=.*|RUNNER_WORK_DIR=/tmp/algojudge-runner-work|' .env
 
       - name: Each topology resolves to the services it should
-        # `config` is the whole check here: it expands every variable, applies the
-        # profiles and refuses an unset required one. It caught a `${VAR:?}` whose
-        # message contained a character that broke the parse.
+        # `config` is the whole check: it expands every variable, applies the
+        # profiles and refuses an unset required one.
         run: |
           set -eu
           check() {
@@ -73,17 +70,13 @@ jobs:
           check "app,data"             "client postgres server"
 
           # The External Runner is an addition to any arrangement, so the four
-          # above must be unchanged by it — and it has to stand alone on a host
-          # of its own, exactly as `runner` does two lines up. The second check
-          # is the one that would catch a `depends_on` added to it in passing.
+          # above must be unchanged by it, and it must stand alone on a host of
+          # its own. The second check catches a `depends_on` added in passing.
           check "edge,app,data,runner,external-runner"                 "client external-runner nginx postgres runner server"
           check "external-runner"      "external-runner"
 
       - name: nginx accepts the configuration
-        # Started rather than linted, which is this project's house answer for
-        # configuration: the four defects found in this file while it was being
-        # written were all things a parser accepts and nginx refuses — a duplicate
-        # `proxy_read_timeout` among them.
+        # Started rather than linted: a parser accepts what nginx refuses.
         #
         # `--add-host` because nginx **resolves every upstream while parsing**,
         # so outside the Compose network this fails with `host not found in
@@ -99,14 +92,9 @@ jobs:
             -v "$PWD/certs:/etc/nginx/certs:ro" \
             nginx:1.27-alpine nginx -t
 
-  # **The job that would be worth most is not here yet, and this says so rather
-  # than pretending.** Bringing the stack up and asserting against it is how this
-  # project checks configuration everywhere else — and it is how every defect in
-  # this repository was found while it was written. It needs published images,
-  # and nothing has been pushed to ghcr.io/algojudge: no repository carries a
-  # `v*` tag, so `algojudge-server:1` resolves to nothing.
-  #
-  # It lands with the first release, together with the one-time flip of the seven
-  # packages to public. Until then the stack is verified by hand against images
-  # built and tagged locally — `docs/OPERATIONS.md` says how, and the pull request
-  # that created this repository records what that run showed.
+  # **The stack is not brought up and asserted against here.** That check needs
+  # published images, and nothing has been pushed to ghcr.io/algojudge: no
+  # repository carries a `v*` tag, so `algojudge-server:1` resolves to nothing.
+  # It lands with the first release, together with the one-time flip of the
+  # seven packages to public. Until then the stack is verified by hand against
+  # locally built images — `docs/OPERATIONS.md` says how.

@@ -3,9 +3,8 @@
 
     python3 scripts/check-repository.py
 
-Every check here is something that has already gone wrong somewhere, or that
-would be silent if it did. It reads only committed files: it never starts the
-stack, never reads a real `.env`, and needs nothing installed.
+It reads only committed files: it never starts the stack, never reads a real
+`.env`, and needs nothing installed.
 """
 
 import argparse
@@ -15,11 +14,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# A setting whose value is a secret. The rule is not "no high-entropy strings" —
-# that reports on every base64-looking word and gets ignored — but something
-# stronger and easier to check: in a file that reaches a deployment, a
-# secret-shaped setting is never assigned a literal. It is an expansion, or it is
-# empty.
+# A setting whose value is a secret. Not "no high-entropy strings", which
+# reports on every base64-looking word and gets ignored: in a file that reaches
+# a deployment, a secret-shaped setting is never assigned a literal. It is an
+# expansion, or it is empty.
 SECRET_NAMES = re.compile(
     r"(PASSWORD|PASSWD|SECRET|TOKEN|_KEY|APIKEY|CREDENTIAL)", re.IGNORECASE
 )
@@ -30,10 +28,8 @@ SECRET_NAMES = re.compile(
 NOT_A_VALUE = re.compile(r"^\s*(|\$\{[^}]+\}|\$[A-Za-z_][A-Za-z0-9_]*)\s*$")
 
 # **A literal is allowed only when it says in its own text that it is not a
-# secret.** This project already writes deliberately-throwaway values that way —
-# `admin-token-development-only`, `ci-only-not-a-deployment`,
-# `Moodle-development-only-1!` — so the convention is enforced rather than
-# invented: a value nobody could mistake for a real one is one nobody does.
+# secret** — `admin-token-development-only`, `ci-only-not-a-deployment`,
+# `Moodle-development-only-1!`.
 #
 # The alternative was exempting `.github/workflows/`, which would have let a real
 # secret through in the one place a workflow would need one.
@@ -49,14 +45,13 @@ def read(name):
 def no_secret_committed(problems):
     """No committed file assigns a literal to a secret-shaped setting.
 
-    `.env` is skipped and `.env.example` is not: reading a real `.env` reports
-    three findings on every correctly configured stack, and a check that cries on
-    a clean stack is one that gets ignored on a dirty one.
+    `.env` is skipped and `.env.example` is not: a real `.env` reports on every
+    correctly configured stack, and a check that cries on a clean stack is one
+    that gets ignored on a dirty one.
     """
-    # **Only the files that reach a deployment**, which is what the rule is
-    # about: configuration, compose, the crontab and the scripts. Reading this
-    # file's own source flagged its `SECRET_NAMES` regex, and a check that
-    # reports on its own definitions is one nobody keeps running.
+    # **Only the files that reach a deployment**: configuration, compose, the
+    # crontab and the scripts. Scanning `.py` as well would flag this file's own
+    # `SECRET_NAMES` regex.
     carries_configuration = {".yaml", ".yml", ".sh", ".conf", ".cron"}
 
     for path in sorted(ROOT.rglob("*")):
@@ -77,10 +72,9 @@ def no_secret_committed(problems):
             continue
 
         # **Two spellings, because the file most likely to carry a real secret
-        # uses the second one.** The first version split on `=` only, so
-        # `AJ_Admin__Token: hunter2` in `compose.yaml` passed the check —
-        # measured by sabotage on 2026-08-30, and compose.yaml is precisely where
-        # somebody pastes a value "just to test it".
+        # uses the second one.** Splitting on `=` alone lets
+        # `AJ_Admin__Token: hunter2` pass in `compose.yaml`, which is precisely
+        # where somebody pastes a value "just to test it".
         yaml = path.suffix in {".yaml", ".yml"}
 
         for number, line in enumerate(text.splitlines(), 1):
@@ -111,12 +105,7 @@ def no_secret_committed(problems):
 
 
 def env_example_and_compose_agree(problems):
-    """Every variable compose expands is described in `.env.example`, and back.
-
-    The two drift in both directions and each costs differently: a variable
-    compose reads and the example does not mention is one nobody knows to set,
-    and one the example describes and nothing reads is advice that does nothing.
-    """
+    """Every variable compose expands appears in `.env.example`, and back."""
     compose = read("compose.yaml")
     example = read(".env.example")
 
@@ -140,8 +129,8 @@ def env_example_and_compose_agree(problems):
             "An operator has no way to learn it exists."
         )
 
-    # The other direction is a warning rather than a failure: `.env.example`
-    # legitimately describes settings read by the scripts rather than by compose.
+    # `.env.example` legitimately describes settings read by the scripts rather
+    # than by compose.
     from_scripts = set()
     for script in sorted((ROOT / "scripts").rglob("*.sh")):
         text = script.read_text(encoding="utf-8")
@@ -261,8 +250,7 @@ def scripts_are_executable_and_shebanged(problems):
 
     **The mode is asked of Git, not of the filesystem.** Windows does not carry
     one, so a script authored there is committed `100644` and a fresh clone on
-    Linux answers `Permission denied` to the first command in the README. Found
-    exactly that way on 2026-08-30.
+    Linux answers `Permission denied` to the first command in the README.
     """
     import subprocess
 
@@ -290,9 +278,7 @@ def scripts_are_executable_and_shebanged(problems):
             problems.append(f"{relative} has no shebang.")
 
         # **Bytes, not `read_text(newline="")`.** That keyword arrived in Python
-        # 3.13 and CI runs 3.12, so the check crashed there while passing on the
-        # machine it was written on — which is the whole failure mode a CI job
-        # exists to catch, arriving in the checker itself.
+        # 3.13 and CI runs 3.12, where passing it raises.
         if b"\r" in raw:
             problems.append(
                 f"{relative} has CRLF line endings. A shebang ending in \\r names "

@@ -28,15 +28,13 @@ services:
     # **The volume is one level above PGDATA and that is not a typo.**
     # PostgreSQL 18 keeps its data in `/var/lib/postgresql/18/docker`, so the
     # volume belongs at `/var/lib/postgresql`. Mounting the old
-    # `/var/lib/postgresql/data` makes the container refuse to start, and an
-    # unpinned `postgres:latest` rolling over to 18 is how this was found.
+    # `/var/lib/postgresql/data` makes the container refuse to start.
     volumes:
       - pgdata:/var/lib/postgresql
 
     # **No host port, in any topology.** Everything that needs the database is on
-    # the `backend` network; anything else reaching it is an accident. A dump is
-    # taken through `docker compose exec`, which needs no port — see
-    # `scripts/backup.sh`.
+    # the `backend` network. A dump is taken through `docker compose exec`, which
+    # needs no port — see `scripts/backup.sh`.
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-algojudge}
       POSTGRES_USER: ${POSTGRES_USER:-algojudge}
@@ -107,9 +105,8 @@ services:
       AJ_Storage__Stores__objects__AccessKey: ${STORAGE_ACCESS_KEY:-}
       AJ_Storage__Stores__objects__SecretKey: ${STORAGE_SECRET_KEY:-}
 
-      # Applies the schema at start. Off in the Server by default, deliberately:
-      # a schema change is a decision somebody makes. An installation that says
-      # yes here is making it, and `scripts/update.sh` takes a backup first.
+      # Applies the schema at start. Off in the Server by default: a schema change
+      # is a decision somebody makes, and `scripts/update.sh` backs up before it.
       AJ_Database__MigrateOnStart: ${MIGRATE_ON_START:-true}
 
       # Read once, at the first start of an empty database, from the directory
@@ -131,7 +128,7 @@ services:
     # `127.0.0.1` in every arrangement rather than opened in one of them. It is
     # not a way into `/admin`: a connection made to the host's own loopback
     # arrives inside the container as the bridge gateway, so `Peer.IsLoopback` is
-    # false and the whole group answers 404. Measured 2026-08-28.
+    # false and the whole group answers 404.
     ports:
       - "127.0.0.1:${SERVER_PORT:-8080}:8080"
 
@@ -158,8 +155,7 @@ services:
       # installation — so this names an origin and never a path.
       #
       # Serving the two from different origins is supported: put the Server's
-      # public address here, and add it to `AJ_Cors__AllowedOrigins` on the
-      # Server. `docs/INSTALL.md` covers that arrangement.
+      # public address here, and add that origin to `AJ_Cors__AllowedOrigins`.
       API_BASE_URL: ${API_BASE_URL:-/}
       USE_FAKE_API: "false"
 

@@ -36,9 +36,7 @@ LOCK_FILE="$ROOT/state/current.lock"
 # **`RepoDigests`, not `Config.Image`.** The container's `Config.Image` is the
 # *reference* it was created from — `…/algojudge-server:1` — and writing that
 # down produces a lock file whose rollback restores whatever that moving tag
-# points at **now**, which is precisely the image being rolled back from. The
-# first version did exactly that, and the file looked perfectly reasonable.
-# Found 2026-08-30 by reading what a successful update had recorded.
+# points at **now**, which is precisely the image being rolled back from.
 #
 # The fallback is the local image id, for an image built on this host and never
 # pushed anywhere. It pins correctly here and cannot be pulled elsewhere, which
@@ -82,14 +80,9 @@ $dry_run || compose pull --quiet
 # the same" would answer yes for ever.
 #
 # **Asked of the containers, not of `compose config --images`.** That command
-# returns a service's image *and its dependencies'* — measured on Compose v5.3.1,
-# `config --images server` prints `postgres:18` first — so taking the first line
-# compared the Server against the database and reported an update on every run.
-#
-# Each running container knows the reference it was created from and the id that
-# reference resolved to at the time. After a pull, the same reference resolves to
-# whatever arrived. Those two ids differing is exactly "something new", with no
-# second opinion about what this service's image is called.
+# returns a service's image *and its dependencies'* — `config --images server`
+# prints `postgres:18` first — so taking the first line compares the Server
+# against the database and reports an update on every run.
 #
 # **Only the services this installation actually selects.** A service no active
 # profile names has no container, and the branch below reads "no container" as
@@ -149,12 +142,12 @@ log "backing up before the swap"
        script will do."
 
 # **Where the backup actually went, not where it usually goes.** `backup.sh`
-# honours `BACKUP_DIR`; this used to look in `$ROOT/backups` regardless, so an
-# installation that moved its backups recorded an empty `dump_before` — and
-# `rollback.sh` prints that as the recovery command, at the one moment after a
-# migration when it is the only way back. A missing directory was worse: `find`
-# fails, `set -euo pipefail` ends the script with no message at all, and it does
-# so immediately after the dump was taken.
+# honours `BACKUP_DIR`; looking in `$ROOT/backups` regardless records an empty
+# `dump_before` for an installation that moved its backups — and `rollback.sh`
+# prints that as the recovery command, at the one moment after a migration when
+# it is the only way back. A missing directory is worse: `find` fails, `set -euo
+# pipefail` ends the script with no message at all, immediately after the dump
+# was taken.
 pre_update_dump=$(find "$(backup_dir)" -maxdepth 1 -name 'algojudge-*.dump' -printf '%T@ %p\n' 2>/dev/null \
     | sort -rn | head -1 | cut -d' ' -f2- || true)
 

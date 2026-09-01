@@ -6,10 +6,6 @@
 #     ./scripts/restore.sh backups/algojudge-20260830-040000.dump
 #     ./scripts/restore.sh --yes backups/algojudge-20260830-040000.dump
 #
-# **Written together with `backup.sh` rather than after it.** A backup with no
-# tested restore procedure is a hypothesis, and the first time anybody finds out
-# is the worst possible time.
-#
 # **This destroys the current database.** `pg_restore --clean --if-exists` drops
 # every object the dump carries before recreating it, so what is in the
 # installation now is gone. It asks first unless told not to.
@@ -68,9 +64,7 @@ fi
 #
 # **An old dump under a newer Server is not an error, it is a migration.** With
 # `MIGRATE_ON_START=true` the Server brings the restored schema forward on its
-# next start — which is usually what somebody restoring last week's backup wants,
-# and is a very unpleasant surprise if it is not. Either way it is one-way: there
-# is no going back down.
+# next start and there is no going back down, so this warns rather than refuses.
 
 if [ -f "$meta" ]; then
     was=$(grep -m1 '^schema=' "$meta" | cut -d= -f2 || true)
@@ -115,21 +109,17 @@ log "restoring"
 # first one leaves a half-restored database, which is strictly worse than a
 # complete one with warnings. The count is reported below instead.
 #
-# **No filename and no `MSYS_NO_PATHCONV`, and both halves were paid for.**
-# `pg_restore` reads standard input when given no file, which is the form that
-# survives `docker compose exec -T`. The first version named `/dev/stdin` and set
-# `MSYS_NO_PATHCONV=1` to stop Git Bash rewriting it — which also stopped
-# `--project-directory` being converted, so Compose could not find `compose.yaml`
-# and failed with *no configuration file provided*. That went into the log as one
-# line, was reported as a pg_restore warning, and the restore **silently did
-# nothing at all** while every check afterwards passed on data that had simply
-# never been touched. Found 2026-08-30 by changing something first and watching
-# the change survive.
+# **No filename, and no `MSYS_NO_PATHCONV` here.** `pg_restore` reads standard
+# input when given no file, which is the form that survives `docker compose exec
+# -T`. Setting `MSYS_NO_PATHCONV=1` to protect a `/dev/stdin` argument also stops
+# `--project-directory` being converted, so Compose cannot find `compose.yaml`
+# and the restore **silently does nothing** while every check afterwards passes
+# on data that was never touched.
+#
 # **Taken before, because afterwards there is nothing to compare against.**
-# `--clean --if-exists` drops each relation and creates it again, so every table
-# that was really restored comes back with a **new identity**. A restore that did
-# nothing leaves the old ones exactly where they were, and that is the only
-# difference visible from outside.
+# `--clean --if-exists` drops each relation and creates it again, so a real
+# restore brings every table back with a **new identity** and a no-op leaves the
+# old ones exactly where they were.
 schema_before=$(psql_scalar "SELECT coalesce(sum(c.oid::bigint), 0) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'" | tr -d '[:space:]')
 
 if ! compose exec -T postgres pg_restore \
@@ -142,11 +132,9 @@ if ! compose exec -T postgres pg_restore \
 fi
 
 # **A restore that restored nothing must not report success**, and counting
-# tables cannot tell. The Server creates the whole schema at start, so every
-# table is already there before a restore begins — the count this used to check
-# passes on exactly the silent no-op it was written to catch, which is the
-# failure recorded above. What a real restore changes is the **identity** of
-# every relation, because `--clean` drops and recreates them.
+# tables cannot tell: the Server creates the whole schema at start, so every
+# table is already there before a restore begins and the count passes on a silent
+# no-op. Only the relation identities compared below separate the two.
 restored_tables=$(psql_scalar "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'" | tr -d '[:space:]')
 if [ "${restored_tables:-0}" -lt 2 ]; then
     die "after restoring, the database holds ${restored_tables:-0} table(s). Nothing was

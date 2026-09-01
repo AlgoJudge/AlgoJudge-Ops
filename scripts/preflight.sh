@@ -4,16 +4,9 @@
 #
 #     ./scripts/preflight.sh
 #
-# **Every check here is something that fails later and worse.** An empty database
-# password starts a database anybody can open; a missing admin token produces an
-# installation nobody can sign in to and no way to find out why; a CIDR with host
-# bits set stops the Server at startup with a message about a network nobody
-# wrote; a relative `RUNNER_WORK_DIR` gives the daemon a path it cannot open, and
-# the daemon answers that with an **empty directory** rather than an error, so
-# every submission runs against nothing and no test fails visibly.
-#
-# It is also what `make up` runs first, so the ordinary path is checked whether
-# or not anybody remembers this file exists.
+# **Every check here is something that fails later and worse.** It is also what
+# `make up` runs first, so the ordinary path is checked whether or not anybody
+# remembers this file exists.
 set -uo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -47,10 +40,9 @@ if runs_service runner runner; then
             report "RUNNER_WORK_DIR is empty and this installation starts the Runner. It must
        be an absolute host path — see .env.example."
         elif [ "${RUNNER_WORK_DIR#/}" = "$RUNNER_WORK_DIR" ]; then
-            # Not "does it exist": Compose creates it. The check is that it is
-            # absolute, because the Runner hands this string to the Docker
-            # daemon and a relative one resolves against the daemon's own idea
-            # of the filesystem — which silently produces an empty directory.
+            # Not "does it exist": Compose creates it. The Runner hands this
+            # string to the Docker daemon, and a relative one resolves against
+            # the daemon's own filesystem — silently, as an empty directory.
             report "RUNNER_WORK_DIR is '$RUNNER_WORK_DIR', which is relative. The Docker
        daemon is given this path directly, and a path it cannot open becomes an
        empty directory rather than an error — so every submission would run
@@ -61,9 +53,7 @@ if runs_service runner runner; then
         # The Runner image runs as `nonroot`, so it reaches the daemon only
         # through `group_add` — and a wrong number produces `Permission denied
         # (os error 13)` from deep inside an HTTP client, which names neither the
-        # socket nor the group. Measured 2026-08-30: Docker Desktop's socket is
-        # `root:root`, so DOCKER_GID=0 there, while a Linux host has `root:docker`
-        # and it is that group's id.
+        # socket nor the group.
         #
         # Asked of a container rather than of this host: on Docker Desktop and
         # under WSL the socket this shell can see is not the one the daemon
@@ -88,11 +78,7 @@ if runs_service runner runner; then
         # **root**, mode 0755, and the Runner runs as uid 65532. Every job then
         # fails with `Permission denied (os error 13)` from deep inside the
         # sandbox layer -- the same sentence a wrong DOCKER_GID produces, which
-        # is why this is worth separating here rather than leaving to whoever
-        # reads the log. Measured 2026-09-01: the socket was reachable and every
-        # submission still failed.
-        #
-        # Probed in a container, like the socket's group above, because this
+        # is why the two are checked apart. Probed in a container because this
         # path belongs to the daemon's filesystem rather than to this shell's.
         if [ -n "${RUNNER_WORK_DIR:-}" ] && [ "${RUNNER_WORK_DIR#/}" != "$RUNNER_WORK_DIR" ]; then
             if ! MSYS_NO_PATHCONV=1 docker run --rm -u 65532:65532                 -v "$RUNNER_WORK_DIR:/work" "nginx:$(setting NGINX_TAG 1.27-alpine)"                 sh -c 'touch /work/.algojudge-probe && rm -f /work/.algojudge-probe'                 >/dev/null 2>&1; then
@@ -106,10 +92,8 @@ if runs_service runner runner; then
         # **The driver, not only the version.** A cgroup parent is a path under
         # `cgroupfs`; under `systemd` -- the default on RHEL 9+, Fedora and
         # Ubuntu -- the Runner gives up on measuring and says so once, at `info`.
-        # Every limit is still enforced and every submission is still judged,
-        # which is why this warns rather than refusing: what is lost is the
-        # memory figure beside a verdict, and losing it silently is the part
-        # worth a sentence.
+        # Limits are still enforced and submissions still judged, so this warns:
+        # what is lost, silently, is the memory figure beside a verdict.
         driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null | tr -d '[:space:]')
         if [ -n "$driver" ] && [ "$driver" != "cgroupfs" ]; then
             warn "the daemon's cgroup driver is '$driver', not cgroupfs. That is one of
@@ -155,8 +139,7 @@ elif [ "$networks" != "none" ]; then
     # **A CIDR with host bits set is refused by the Server, by name.** .NET 10
     # normalises `10.0.5.17/24` to `10.0.5.0/24` without a word, which turns a
     # typo meaning one machine into one meaning a laboratory — so the Server
-    # compares what was written against the base address and stops. Catching it
-    # here means the message arrives before the container does.
+    # compares what was written against the base address and stops.
     IFS=',' read -ra entries <<<"$networks"
     for entry in "${entries[@]}"; do
         entry=$(printf '%s' "$entry" | tr -d '[:space:]')
@@ -175,7 +158,6 @@ elif [ "$networks" != "none" ]; then
 
         IFS='.' read -r a b c d <<<"$address"
         value=$(( (a << 24) + (b << 16) + (c << 8) + d ))
-        # The host part is what a correct network address has all-zero.
         if [ "$bits" -lt 32 ] && [ $((value & ((1 << (32 - bits)) - 1))) -ne 0 ]; then
             masked=$((value & ~(((1 << (32 - bits)) - 1))))
             report "TRUSTED_PROXY_NETWORKS entry '$entry' has host bits set. The Server
@@ -196,9 +178,7 @@ fi
 # ── Storage ─────────────────────────────────────────────────────────────────
 #
 # **The Server refuses at startup when the kind it was given has no path or no
-# bucket**, and it refuses well -- by name. The only thing gained here is that
-# the sentence arrives before the container does, and from a file the operator
-# is already reading.
+# bucket**, and it refuses well -- by name.
 
 case "$(setting STORAGE_KIND postgres)" in
     postgres) : ;;
@@ -219,8 +199,6 @@ case "$(setting STORAGE_KIND postgres)" in
 esac
 
 # **A dump is no longer the whole backup once files live outside the database.**
-# `scripts/backup.sh` says the same thing when it runs; said here it arrives
-# before the first one is taken rather than after.
 case "$(setting STORAGE_KIND postgres)" in
     filesystem | s3)
         log "STORAGE_KIND is $(setting STORAGE_KIND postgres): uploaded files are stored outside

@@ -23,18 +23,17 @@ load_env
 lock
 
 # **Every file this script writes is 0600, and the directories 0700.**
-# A dump is not an ordinary file: it carries every account, every password hash
-# and the data-protection key ring that mints this installation's session
-# cookies — `.gitignore` in this repository says so, and `docs/OPERATIONS.md`
-# says what a leaked one is worth. Under cron the shell's umask is 022, which
-# made all of that world-readable on the host.
+# A dump carries every account, every password hash and the data-protection key
+# ring that mints this installation's session cookies; `docs/OPERATIONS.md` says
+# what a leaked one is worth. Under cron the shell's umask is 022, which would
+# leave all of that world-readable on the host.
 umask 077
 
 BACKUP_DIR=$(backup_dir)
 KEEP_DIR="$BACKUP_DIR/keep"
 mkdir -p "$BACKUP_DIR" "$KEEP_DIR"
 # `umask` only bounds what is created; a directory that already exists keeps the
-# mode it was made with, and every installation older than this change has one.
+# mode it was made with.
 chmod 700 "$BACKUP_DIR" "$KEEP_DIR" 2>/dev/null || true
 
 quiesce=false
@@ -90,9 +89,8 @@ case "$storage_kind" in
         coverage="complete: files are in the database"
         ;;
     filesystem)
-        # Said every time rather than once in a document. The dump on its own
-        # restores rows pointing at bytes that are not there, and the installation
-        # then answers 503 on every download with nothing naming the cause.
+        # Restoring the dump alone gives an installation that answers 503 on
+        # every download with nothing naming the cause.
         coverage="INCOMPLETE: STORAGE_KIND=filesystem, so uploaded files are NOT in this dump"
         warn "STORAGE_KIND is 'filesystem'. This dump does not contain the uploaded
        files, and restoring it alone gives an installation whose rows point at
@@ -178,14 +176,13 @@ fi
 # **Two checks, because the cheap one does not prove what it looks like it
 # proves.** A custom-format archive keeps its table of contents at the *front*,
 # so `pg_restore --list` succeeds on a file that was truncated half way through
-# the data — it reads the header and stops. It is still worth running: it catches
-# an empty file, a write that failed on the first block, and anything that is not
-# a PostgreSQL archive at all.
+# the data — it reads the header and stops. It still catches an empty file, a
+# write that failed on the first block, and anything that is not a PostgreSQL
+# archive at all.
 #
-# What actually proves the data is there is reading every block, which is what
+# What proves the data is there is reading every block, which is what
 # `pg_restore -f /dev/null` does. That costs a full decompression pass, so it is
-# opt-in: worth it on an installation whose database still fits in a coffee
-# break, and not worth blocking a nightly run on once it does not.
+# opt-in rather than something a nightly run blocks on.
 #
 # Both run inside the container: the host is not required to have PostgreSQL
 # installed at all, and this stack ships it.
@@ -193,8 +190,7 @@ fi
 # **No filename, not `/dev/stdin`.** `pg_restore` reads standard input when it is
 # given no file, and that is the form that works through `docker compose exec -T`
 # — naming `/dev/stdin` explicitly fails with *did not find magic string in file
-# header* on a dump that is perfectly good. Measured 2026-08-30, on a dump whose
-# first five bytes were `PGDMP`.
+# header* on a dump that is perfectly good.
 
 if ! compose exec -T postgres pg_restore --list <"$target.partial" >/dev/null 2>&1; then
     rm -f "$target.partial"
@@ -240,7 +236,7 @@ log "wrote $(human_bytes "$size")"
 
 reopen
 
-# **A named hold is never rotated**, so this is where the run ends for one.
+# **Rotation does not apply to a named hold**, so the run ends here.
 if [ -n "$keep_label" ]; then
     log "held as '$keep_label', for review on $keep_until. Nothing in keep/ is ever
        deleted automatically; the next ordinary run reminds you once that date
@@ -261,13 +257,12 @@ fi
 #
 # **"Days on which a dump exists", not "the last N calendar days."** A host
 # switched off for a fortnight would, under the calendar reading, come back
-# holding no daily history at all; under this one it comes back holding its seven
-# most recent dumps, merely spread over a longer span.
+# holding no daily history at all.
 
 survivors=$(mktemp)
 add_cleanup 'rm -f "$survivors" "$survivors.all"'
 
-# Newest first, so `awk` keeps the first it sees of each period.
+# Newest first, so the first file seen in each period is the one kept.
 find "$BACKUP_DIR" -maxdepth 1 -name 'algojudge-*.dump' -printf '%T@ %p\n' \
     | sort -rn | cut -d' ' -f2- >"$survivors.all"
 
@@ -305,9 +300,8 @@ done <"$survivors.all"
 if [ "$MAX_TOTAL_GB" -gt 0 ]; then
     budget=$((MAX_TOTAL_GB * 1024 * 1024 * 1024))
 
-    # **`keep/` counts towards it.** It is never auto-deleted, so leaving it out
-    # would mean an archive nobody looks at fills the disk exactly as reliably as
-    # an unbounded rotation would.
+    # **`keep/` counts towards the budget.** Leaving it out would let an archive
+    # nobody looks at fill the disk as reliably as an unbounded rotation would.
     used() { du -sb "$BACKUP_DIR" 2>/dev/null | cut -f1; }
 
     while [ "$(used)" -gt "$budget" ]; do
@@ -334,10 +328,10 @@ fi
 
 # ── Overdue holds ───────────────────────────────────────────────────────────
 #
-# **Reported on every run, which is the whole of what bounds `keep/`.** A
-# rotation reaching two months means nothing if an unreviewed hold from three
-# years ago is sitting beside it — and personal data in a dump does not stop
-# being personal data because somebody labelled the file.
+# **Every overdue hold is reported on every run.** A rotation reaching two
+# months means nothing if an unreviewed hold from three years ago sits beside
+# it, and personal data in a dump does not stop being personal data because
+# somebody labelled the file.
 
 today=$(date '+%s')
 while IFS= read -r meta; do
