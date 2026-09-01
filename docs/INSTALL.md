@@ -71,6 +71,29 @@ in this stack that needs a `docker login ghcr.io` before `up`.
 > this stack runs only against images built from the product repositories and
 > tagged locally — see `docs/OPERATIONS.md`.
 
+## The project name is `algojudge`, and it decides which volumes you get
+
+`compose.yaml` sets `name: algojudge`, so every volume this stack creates is
+`algojudge_pgdata`, `algojudge_objects` and so on. That is what makes
+`docker compose` in this directory find the installation again without being
+told where it is.
+
+It also means **a second run of this stack on the same host attaches the same
+volumes** — a rehearsal, a second installation, a copy of the repository
+somewhere else. Compose does not warn, and the first sign that anything is
+shared is usually `password authentication failed for user "algojudge"`, because
+`POSTGRES_PASSWORD` is read only when the volume is first created and the new
+`.env` disagrees with the old data.
+
+If you want two of anything on one host, give each its own project name:
+
+```bash
+docker compose -p algojudge-staging up -d --wait
+```
+
+and pass `-p` to every later command, including the scripts. Better still, put
+`COMPOSE_PROJECT_NAME=` in the `.env` beside it, so nobody has to remember.
+
 ## 1. Clone and configure
 
 ```bash
