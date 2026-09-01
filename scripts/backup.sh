@@ -22,9 +22,20 @@ set -uo pipefail
 load_env
 lock
 
+# **Every file this script writes is 0600, and the directories 0700.**
+# A dump is not an ordinary file: it carries every account, every password hash
+# and the data-protection key ring that mints this installation's session
+# cookies — `.gitignore` in this repository says so, and `docs/OPERATIONS.md`
+# says what a leaked one is worth. Under cron the shell's umask is 022, which
+# made all of that world-readable on the host.
+umask 077
+
 BACKUP_DIR=$(backup_dir)
 KEEP_DIR="$BACKUP_DIR/keep"
 mkdir -p "$BACKUP_DIR" "$KEEP_DIR"
+# `umask` only bounds what is created; a directory that already exists keeps the
+# mode it was made with, and every installation older than this change has one.
+chmod 700 "$BACKUP_DIR" "$KEEP_DIR" 2>/dev/null || true
 
 quiesce=false
 pre_update=false

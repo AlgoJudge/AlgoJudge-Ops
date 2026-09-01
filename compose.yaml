@@ -284,11 +284,20 @@ services:
     group_add:
       - ${DOCKER_GID:-999}
 
-    # **Generous, and it buys less than it looks.** The Runner does not handle
-    # SIGTERM: it is killed and its job goes back on the queue when the lease
-    # expires. A clean drain is `aj-admin maintenance on` on the *Server* first —
-    # `scripts/maintenance.sh` — after which there is nothing in flight to lose.
-    stop_grace_period: ${RUNNER_STOP_GRACE:-300s}
+    # **Short, because a long one buys nothing and is paid every time.**
+    # Measured 2026-09-01: this Runner does not merely fail to handle `SIGTERM`,
+    # it **ignores** it — `docker stop -t 60` waited the full sixty seconds and
+    # then killed it, exit 137. So the grace period is not time the Runner uses
+    # to finish anything; it is time every `down`, every `stop` and every update
+    # spends waiting to kill it. At the old 300s that was five minutes of
+    # silence on each one.
+    #
+    # Nothing is lost by cutting it: the job goes back on the queue when its
+    # lease expires, whichever second it was killed in. A clean drain is
+    # `aj-admin maintenance on` on the *Server* first — `scripts/maintenance.sh`
+    # — after which there is nothing in flight to lose. Raise it only for a
+    # Runner build that does handle the signal.
+    stop_grace_period: ${RUNNER_STOP_GRACE:-30s}
 
     networks:
       - runner
