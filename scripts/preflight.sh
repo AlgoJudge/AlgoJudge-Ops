@@ -113,10 +113,11 @@ case ",${COMPOSE_PROFILES:-}," in
         # worth a sentence.
         driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null | tr -d '[:space:]')
         if [ -n "$driver" ] && [ "$driver" != "cgroupfs" ]; then
-            warn "the daemon's cgroup driver is '$driver', not cgroupfs. Peak memory is
-       then never measured -- verdicts arrive without the figure, and one info
-       line in the Runner's log is the whole announcement. Limits are still
-       enforced. docs/INSTALL.md has the rest of it."
+            warn "the daemon's cgroup driver is '$driver', not cgroupfs. That is one of
+       the two things peak memory needs -- the other is a writable cgroup tree in
+       the Runner's container, which this stack does not mount. Verdicts arrive
+       without the figure either way; limits are still enforced.
+       docs/INSTALL.md has the whole of it."
         fi
         ;;
 esac

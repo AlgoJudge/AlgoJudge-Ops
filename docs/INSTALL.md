@@ -16,18 +16,27 @@ From an empty directory to an installation that judges a submission.
   trusting the flag. Compose v2 is enough because every value here is passed
   through `environment:` — nothing in this repository uses the `env_file:` form
   that needs 2.24.
-- **The daemon's cgroup driver set to `cgroupfs`, if you want a memory figure
-  beside a verdict.** Nothing refuses without it. Under `systemd` — the default
-  on RHEL 9+, Fedora and Ubuntu — every limit is still enforced and every
-  submission still judged; peak memory is simply never measured, and the whole
-  announcement is one `info` line in the Runner's log.
+- **This stack does not report peak memory, and that is worth knowing rather
+  than discovering.** Every limit is enforced and every submission judged; what
+  is missing is the number beside the verdict, announced by one `info` line in
+  the Runner's log and nowhere else.
+
+  It needs **two** things, and this repository supplies neither by itself. The
+  daemon's cgroup driver must be `cgroupfs` — under `systemd`, the default on
+  RHEL 9+, Fedora and Ubuntu, a cgroup parent is not a path at all:
 
   ```bash
   stat -fc %T /sys/fs/cgroup                 # cgroup2fs
   docker info --format '{{.CgroupDriver}}'   # cgroupfs
   ```
 
-  `preflight.sh` warns when the second one disagrees.
+  And the Runner has to be able to **create** a cgroup, which means a writable
+  `/sys/fs/cgroup` in its container. `compose.yaml` mounts none, deliberately:
+  handing a container write access to the host's cgroup tree is a decision an
+  installation makes, not a default it inherits. Until it does, the driver alone
+  changes nothing.
+
+  `preflight.sh` warns about the driver, which is the half it can see.
 - **`bash`, `openssl`, `find`, `du`, `df`** — the scripts use nothing else.
 - **Disk for backups**, ideally on a **different filesystem** from the
   PostgreSQL volume. On one filesystem no reserve setting can guarantee that a
