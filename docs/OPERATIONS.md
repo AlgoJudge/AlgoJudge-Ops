@@ -275,9 +275,28 @@ since.
 
 ### The Runner during an update
 
-**The Runner does not handle `SIGTERM`.** It is killed, and its job goes back on
-the queue when the lease expires. `stop_grace_period` is set generously but buys
-nothing on its own.
+**The Runner does not handle `SIGTERM` — it ignores it.** Measured 2026-09-01:
+`docker stop -t 60` waited the full sixty seconds and then killed it, exit 137.
+It is killed, and its job goes back on the queue when the lease expires.
+
+**So `stop_grace_period` is a cost, not a courtesy**, and it is paid on every
+`down`, every `stop` and every update. It shipped at 300s until 2026-09-01,
+which is where five minutes of silence at the end of `docker compose down` came
+from; it is 30s now, and nothing is lost by that — the job returns to the queue
+whichever second the Runner died in. Measured on the same stack: **302 s before,
+32 s after**.
+
+**Two things stop that change reaching an installation that already exists**,
+and both are worth knowing before you conclude it did not work:
+
+- **Docker records the timeout on the container when it is created.** Until the
+  containers are recreated — the next `up` after a pull, or `up --force-recreate`
+  — `down` still waits the old value, whatever `compose.yaml` now says.
+  `docker inspect -f '{{.Config.StopTimeout}}' <container>` says which one it
+  holds.
+- **`.env` wins over the new default.** An installation set up before this
+  carries `RUNNER_STOP_GRACE=300s` in its own `.env`, and that is still what it
+  gets. Change it there.
 
 A clean drain is `maintenance.sh on --wait-closed` on the **Server** first, which
 `update.sh` does. Never `docker stop` on a Runner as a way of being careful.
