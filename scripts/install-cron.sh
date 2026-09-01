@@ -7,7 +7,7 @@
 #     ./scripts/install-cron.sh --print     show what would be installed
 #
 # **A deliberate call, never automatic.** Nothing about bringing this stack up
-# schedules anything; an installation that wants a nightly backup asks for one.
+# schedules anything.
 set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -21,9 +21,8 @@ zone=$(setting TZ "")
 rendered=$(mktemp)
 add_cleanup 'rm -f "$rendered"'
 
-# The crontab ships with a path and a zone that are examples. Both are rewritten
-# to what this installation actually is, so the file that gets installed is one
-# nobody has to remember to edit.
+# The crontab ships with an example path and zone, both rewritten to what this
+# installation actually is, so nobody has to remember to edit the installed file.
 sed -e "s|/opt/algojudge-ops|$ROOT|g" \
     ${zone:+-e "s|^CRON_TZ=.*|CRON_TZ=$zone|"} \
     "$CRON_FILE" >"$rendered"
@@ -47,18 +46,13 @@ command -v crontab >/dev/null 2>&1 || die "the crontab command is not installed.
 # **The CRON_TZ check is done by installing, not by probing.** `crontab <file>`
 # replaces the whole crontab, so a probe that writes a one-line file to see
 # whether it is accepted would destroy everything else on the host in order to
-# find out. Instead the real thing is offered, and if this cron refuses it — Vixie
-# and cronie accept it, not every implementation does — the same content goes in
-# again without the line, with a warning. Nothing is ever written that does not
-# already contain everything that was there.
+# find out. Vixie cron and cronie accept the line; not every implementation does.
 
-# **An unreadable crontab is not an empty one**, and the difference is the whole
-# of this file's promise. `crontab -l 2>/dev/null || true` cannot tell "this user
-# has none" from "this user may not have one" or "the spool could not be read":
-# all three give a non-zero exit and a discarded message, `existing` comes out
-# empty, and the merge below then writes a crontab holding nothing but ours —
-# destroying every unrelated job on the host, silently, from a script whose own
-# comment says that must not happen.
+# **An unreadable crontab is not an empty one.** `crontab -l 2>/dev/null || true`
+# cannot tell "this user has none" from "this user may not have one" or "the
+# spool could not be read": all three give a non-zero exit and a discarded
+# message, `existing` comes out empty, and the merge below then writes a crontab
+# holding nothing but ours — destroying every unrelated job on the host, silently.
 crontab_error=$(mktemp)
 add_cleanup "rm -f '$crontab_error'"
 
@@ -102,8 +96,8 @@ if ! install_crontab "$rendered" 2>/dev/null; then
        nothing but a shell — schedule them with whatever this host does use."
 else
     # Accepted is not the same as honoured: an implementation that ignores the
-    # line accepts it silently. Said rather than checked, because there is no way
-    # to check it without waiting until four in the morning.
+    # line accepts it silently, and there is no way to check without waiting
+    # until four in the morning.
     if [ -n "$zone" ] && crontab -l 2>/dev/null | grep -q "^CRON_TZ=$zone"; then
         log "CRON_TZ=$zone accepted. Vixie cron and cronie honour it; if this host
        runs something else, confirm once that the first backup lands at 04:00

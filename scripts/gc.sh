@@ -6,14 +6,12 @@
 #     ./scripts/gc.sh
 #
 # **Every prune here is filtered to this project.** `docker system prune` and
-# `docker volume prune` do not know that the host may run other things, and a
-# maintenance script that took somebody's unrelated database volume with it would
-# be the worst thing in this repository. Nothing below runs unfiltered.
+# `docker volume prune` do not know that the host may run other things, and
+# would take somebody's unrelated volume or image with them.
 #
-# **`VACUUM` and `REINDEX` are deliberately not here.** They have a different
-# risk profile and a different runtime — a `REINDEX` holds locks a contest would
-# notice — and PostgreSQL's autovacuum already does the routine part. Putting
-# them in a nightly job is its own decision, and nobody has taken it.
+# **`VACUUM` and `REINDEX` are deliberately not here.** A `REINDEX` holds locks
+# a contest would notice, and PostgreSQL's autovacuum already does the routine
+# part.
 set -uo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -27,13 +25,12 @@ RETENTION=$(setting GC_TMP_RETENTION_DAYS 7)
 #
 # **Strays are normal, not a defect.** A Runner killed mid-evaluation cannot
 # clean up after itself, and the job it was doing goes back on the queue by
-# lease. What it leaves is a directory nothing will ever look at again.
+# lease.
 
 work=${RUNNER_WORK_DIR:-}
 if [ -n "$work" ] && [ -d "$work" ]; then
-    # `-mmin` rather than `-mtime` for the floor, and a whole day of margin: a
-    # long evaluation is minutes, not days, so anything older than the retention
-    # window is certainly finished. Deleting a directory a Runner is still using
+    # **A whole day of margin, and that is the point of the units.** An
+    # evaluation takes minutes; deleting a directory a Runner is still using
     # would fail an evaluation that was going to succeed.
     removed=$(find "$work" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION" -print 2>/dev/null | wc -l)
     if [ "$removed" -gt 0 ]; then
@@ -48,14 +45,13 @@ fi
 # cannot: a Runner that was removed rather than restarted, so nothing of its own
 # ever runs again to tidy up.
 #
-# **By label, and the label the Runner itself uses.** `--filter name=` is a
-# substring match, not an anchored one, so `name=aj-job-` would have taken
-# somebody else's `legacy-aj-job-archive` with it — and it matched nothing of
-# ours in the first place, because a sandbox is named `algojudge-<pid>-<random>`
-# and carries `algojudge.sandbox=1` instead (`aj-sandbox/src/docker.rs`).
+# **By label, not by name.** A sandbox is named `algojudge-<pid>-<random>` and
+# carries `algojudge.sandbox=1` (`aj-sandbox/src/docker.rs`); `--filter name=` is
+# a substring match, not an anchored one, so a name filter would miss ours and
+# reach somebody else's containers instead.
 #
 # `status=exited` stays: a sandbox that is still running belongs to a Runner
-# that is still using it, including one on this host that is working perfectly.
+# that is still using it.
 strays=$(docker ps -aq --filter "status=exited" --filter "label=algojudge.sandbox=1" 2>/dev/null | wc -l)
 if [ "$strays" -gt 0 ]; then
     docker ps -aq --filter "status=exited" --filter "label=algojudge.sandbox=1"         | xargs -r docker rm -f >/dev/null 2>&1
@@ -66,8 +62,7 @@ fi
 
 if [ "$(setting GC_PRUNE_IMAGES true)" = "true" ]; then
     # **Filtered per repository**, because a label filter matches its value
-    # exactly and every image carries its own `<owner>/<repo>`. An image
-    # without one of those labels is somebody else's and is left alone.
+    # exactly and every image carries its own `<owner>/<repo>`.
     reclaimed=$(prune_our_images)
     if [ -n "$reclaimed" ]; then
         log "images:"
