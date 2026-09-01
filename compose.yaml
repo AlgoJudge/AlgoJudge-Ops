@@ -88,13 +88,9 @@ services:
       # Behind somebody else's proxy (T3), set it to theirs.
       AJ_Forwarded__KnownNetworks: ${TRUSTED_PROXY_NETWORKS:-172.28.0.0/24}
 
-      # **Where a browser reaches this installation**, which is not always where
-      # the containers reach each other. Empty is the bundled arrangement — one
-      # domain, application at `/` and API at `/api/v1` — and is correct there,
-      # because the Server then concatenates onto nothing and the address it
-      # builds is already same-origin. Serving the two halves from different
-      # origins without this leaves a federated sign-in ending at a bare
-      # `/activities`, resolved against the **API's** origin and its 404.
+      # Where a **browser** reaches the application. Empty is right on one
+      # origin; on two, a federated sign-in ends at a bare `/activities`
+      # resolved against the API's origin.
       AJ_App__BaseUrl: ${APP_BASE_URL:-}
 
       # **One store, in the database, by default** — which is what makes a single
@@ -103,11 +99,8 @@ services:
       AJ_Storage__Stores__objects__Kind: ${STORAGE_KIND:-postgres}
       AJ_Storage__Default: objects
 
-      # **Read only by the kind that asks for them**, which is why they can all
-      # be empty under the default. `filesystem` requires the path; `s3`
-      # requires all four below, and the Server refuses at startup naming the
-      # one that is missing. Without these lines two of the three values
-      # `.env.example` offers could not start at all.
+      # Read only by the kind that asks for them, so all four stay empty under
+      # the default. Without them `filesystem` and `s3` could not start at all.
       AJ_Storage__Stores__objects__Path: ${STORAGE_PATH:-/var/lib/algojudge/objects}
       AJ_Storage__Stores__objects__Endpoint: ${STORAGE_ENDPOINT:-}
       AJ_Storage__Stores__objects__Bucket: ${STORAGE_BUCKET:-}
@@ -128,10 +121,9 @@ services:
       # Optional, and `:ro`. The directory exists in this repository so the mount
       # never fails; an empty one configures nothing.
       - ./preconfig:/etc/algojudge/preconfig:ro
-      # **Mounted whatever `STORAGE_KIND` is, and empty under the default.**
-      # A `filesystem` store writing into the container's own layer would lose
-      # every uploaded file on the next `up -d`, and Compose cannot mount a
-      # volume conditionally. An unused empty volume is the cheaper mistake.
+      # Mounted whatever `STORAGE_KIND` is: Compose cannot mount conditionally,
+      # and a `filesystem` store on the container layer loses every file on the
+      # next `up -d`.
       - objects:/var/lib/algojudge/objects
 
     # **Loopback only, and it is not conditional on the topology.** Compose
@@ -284,19 +276,10 @@ services:
     group_add:
       - ${DOCKER_GID:-999}
 
-    # **Short, because a long one buys nothing and is paid every time.**
-    # Measured 2026-09-01: this Runner does not merely fail to handle `SIGTERM`,
-    # it **ignores** it — `docker stop -t 60` waited the full sixty seconds and
-    # then killed it, exit 137. So the grace period is not time the Runner uses
-    # to finish anything; it is time every `down`, every `stop` and every update
-    # spends waiting to kill it. At the old 300s that was five minutes of
-    # silence on each one.
-    #
-    # Nothing is lost by cutting it: the job goes back on the queue when its
-    # lease expires, whichever second it was killed in. A clean drain is
-    # `aj-admin maintenance on` on the *Server* first — `scripts/maintenance.sh`
-    # — after which there is nothing in flight to lose. Raise it only for a
-    # Runner build that does handle the signal.
+    # **Short, because it buys nothing and is paid on every stop.** The Runner
+    # ignores `SIGTERM` and is killed anyway, so this is only how long `down`,
+    # `stop` and `update.sh` wait. The job returns to the queue when its lease
+    # expires; a clean drain is `scripts/maintenance.sh` on the Server first.
     stop_grace_period: ${RUNNER_STOP_GRACE:-30s}
 
     networks:
@@ -304,109 +287,65 @@ services:
 
   # ── The External Runner ─────────────────────────────────────────────────────
   #
-  # **A profile of its own, and deliberately not in the default set.** This
-  # Runner judges nothing: it signs in to somebody else's judging system under an
-  # account there, forwards the submission, and reports back the verdict that
-  # archive reached. An installation with no such account must not be handed a
-  # container that has nothing to sign in with.
-  #
-  # It is an addition to any arrangement rather than a fifth one — add
-  # `external-runner` to `COMPOSE_PROFILES` beside `runner`, or run it alone on a
-  # host of its own exactly as a Runner can.
+  # **Its own profile, outside the default set**: it signs in to an external
+  # judging system under an account there, and an installation without one must
+  # not get a container that cannot authenticate. An addition to any arrangement,
+  # not a fifth one.
 
   external-runner:
     profiles: ["external-runner"]
     image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-external-runner:${EXTERNAL_RUNNER_TAG:-1}
     restart: unless-stopped
 
-    # **No `depends_on`, for the reason the Runner above has none.** This profile
-    # has to start where there is no `server` service to depend on. It retries
-    # its own registration, for ever, and says so while it waits.
+    # No `depends_on`: this profile must start where there is no `server`
+    # service. It retries its own registration.
 
     environment:
-      # Must carry `/api/v1`; it refuses at startup without it. The same variable
-      # the Runner reads, because it is the same fact about the same host.
+      # Must carry `/api/v1`; it refuses at startup without it.
       AJ_Server__BaseUrl: ${SERVER_URL:-http://server:8080}/api/v1
 
-      # **Its own name, and not the Runner's.** This registers as a second,
-      # separate Runner with its own identity and its own approval, so two
-      # services sharing one name would be two rows nobody could tell apart.
+      # Not `RUNNER_NAME`: a second Runner, with its own identity and approval.
       AJ_Runner__Name: ${EXTERNAL_RUNNER_NAME:-external-runner-1}
 
-      # Which judging system this process forwards to. **One process serves one
-      # judge**; a second judging system is a second service, with its own
-      # account and its own identity volume. An unrecognised name is refused at
-      # startup rather than defaulted.
+      # One process serves one judge. An unrecognised name is refused at startup.
       AJ_External__Judge: ${EXTERNAL_JUDGE:-uva}
 
-      # **The robot account at that judging system, and `:-` rather than `:?` on
-      # purpose.** Compose interpolates this whole file *before* it applies
-      # profiles — measured 2026-09-01 on Compose v5.3.1, where an unset
-      # `RUNNER_WORK_DIR` stopped `docker compose config` under `app,data`, a set
-      # of profiles that does not include the Runner. A required marker here
-      # would therefore break every arrangement that never runs this service.
-      #
-      # Empty reaches the container instead, which treats it as absent and
-      # refuses by name — and under `restart: unless-stopped` that is a crash
-      # loop rather than one line in a log. `scripts/preflight.sh` refuses first,
-      # and only when this profile is active.
+      # **`:-` and not `:?`**: Compose interpolates the whole file before it
+      # applies profiles, so a required marker here would break every arrangement
+      # that never runs this service. `scripts/preflight.sh` refuses them
+      # instead, and only when this service is selected.
       AJ_External__Username: ${EXTERNAL_JUDGE_USERNAME:-}
       AJ_External__Password: ${EXTERNAL_JUDGE_PASSWORD:-}
 
-      # **Empty is the usual answer**: it then declares whatever the integration
-      # serves, which is `uva@1` for the one that exists. The Server matches a
-      # problem type by string equality, so a value with a typo in it is silence
-      # — this Runner is handed nothing and looks perfectly healthy.
+      # Empty declares the judge's own type. A typo is silence, not an error:
+      # the Server pairs by string equality.
       AJ_Runner__ProblemTypes: ${EXTERNAL_PROBLEM_TYPES:-}
 
-      # **Read once, at the first registration, and never again**, exactly as
-      # `AJ_Runner__Tags` is above. Empty means the general pool.
+      # Read once, at the first registration. Empty is the general pool.
       AJ_Runner__Tags: ${EXTERNAL_RUNNER_TAGS:-}
 
       RUST_LOG: ${EXTERNAL_RUNNER_LOG:-info}
 
-      # **Five timings are deliberately not offered here.** The lease, the
-      # pending timeout and the three poll intervals check one another at
-      # startup: a lease has to outlast a submission the archive has not answered
-      # for, and the slowest poll has to fit four times inside the lease, because
-      # the lease is renewed on the polling cycle. The image's defaults satisfy
-      # all of it, and the well-meant change — polling somebody else's service
-      # more gently — is the one that breaks it. What it costs is the same
-      # solution submitted to that service twice, under this installation's
-      # account. An installation that must move them writes a Compose override,
-      # after reading that repository's own `.env.example`.
+      # The lease and the four poll intervals check one another at startup and
+      # the image's defaults satisfy all of it, so they are not offered here.
+      # Moving them costs a solution submitted to the archive twice.
 
     volumes:
-      # **The identity key, and losing it costs a re-registration and a manual
-      # approval** — the Runner's bargain, on a second identity. The image
-      # creates and owns both directories, so an empty named volume mounted over
-      # either inherits `nonroot` rather than root.
+      # The identity key. Losing it costs a re-registration and an approval.
       - external-runner-identity:/var/lib/algojudge-external-runner
-      # A cache of participants' source text, not of problem packages: an
-      # external problem has none. Bounded by the image at 256 MiB, and losing it
-      # costs one download rather than a job.
+      # Participants' source text, bounded by the image at 256 MiB.
       - external-runner-cache:/var/cache/algojudge-external-runner
 
-    # **It dials out twice and accepts nothing.** To the Server by container
-    # name, and to the judging system over the internet. No published port, no
-    # listener, no Docker socket, no work directory, no language images — none of
-    # what the Runner above needs, because nothing runs here.
+    # It dials out to the Server and to the judging system, and accepts nothing:
+    # no port, no listener, no Docker socket, no work directory.
     networks:
       - runner
 
-    # **No health check, and that is the image rather than an oversight.** It is
-    # `distroless/static` with no shell, no curl and no wget, and the process
-    # listens on nothing: there is nothing to ask and nothing to ask it with. So
-    # `up -d --wait` calls this service ready as soon as it is running — which it
-    # is even while it is failing to sign in. Its log is the only instrument, and
-    # `docker compose exec` is not available on it either.
-    #
-    # **And no `stop_grace_period`**, because there is nothing for one to buy: it
-    # handles no SIGTERM and dies at once. What dies with it is the set of
-    # submissions the archive has not answered for, which it holds in memory —
-    # the Server reclaims those leases, requeues the jobs, and each one is sent
-    # to that archive a second time. `docs/OPERATIONS.md` says what to do
-    # instead.
+    # **No health check is possible** — `distroless/static`, no shell, no port —
+    # so `up --wait` calls it ready while it may still be failing to sign in. Its
+    # log is the only instrument. No `stop_grace_period` either: it handles no
+    # SIGTERM, and what dies with it is the set of submissions the archive has
+    # not answered for. `docs/OPERATIONS.md` says what that costs.
 
 # ── Networks ──────────────────────────────────────────────────────────────────
 #
@@ -429,12 +368,8 @@ networks:
 
 volumes:
   pgdata:
-  # Whatever `STORAGE_KIND` is. Empty and unread under `postgres`.
-  objects:
+  objects:                   # unread under STORAGE_KIND=postgres
   runner-identity:
-  # 10 GiB, compiled into the Runner: it holds problem packages, and one of those
-  # can be hundreds of megabytes.
-  runner-cache:
+  runner-cache:              # 10 GiB, bounded by the Runner
   external-runner-identity:
-  # 256 MiB, from the image: participants' source text and nothing else.
-  external-runner-cache:
+  external-runner-cache:     # 256 MiB, bounded by the image
