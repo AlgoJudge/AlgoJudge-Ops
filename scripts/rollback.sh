@@ -90,8 +90,19 @@ override="$ROOT/state/rollback.compose.yaml"
 
 $from_update || "$ROOT/scripts/maintenance.sh" on "rollback" --wait-closed || true
 
+# **Appended to `COMPOSE_FILE`, not passed with `-f`.** An explicit `-f` replaces
+# the whole list, so an installation that composes an overlay — the usual way,
+# and the way `runs_service` in `lib/common.sh` assumes — would compose without
+# it here. Every service only the overlay defines then falls out of the set, and
+# `--remove-orphans` on this very line removes its container: an object store, a
+# second Runner, whatever that installation added. `update.sh` starts the stack
+# with a bare `compose up`, and this is now the same.
 log "starting the recorded images"
-if ! compose -f "$ROOT/compose.yaml" -f "$override" up -d --remove-orphans; then
+if ! (
+    COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:$override"
+    export COMPOSE_FILE
+    compose up -d --remove-orphans
+); then
     die "could not start the recorded images. They may have been pruned — check
        \`docker images\`. state/current.lock still names them."
 fi
@@ -102,7 +113,7 @@ if wait_healthy 120; then
     log "**The override at state/rollback.compose.yaml is what pins them.** It is not
        read by a plain \`docker compose up\`, so bring the stack up with both files
        until the cause is fixed:
-         docker compose -f compose.yaml -f state/rollback.compose.yaml up -d"
+         COMPOSE_FILE=\"\$COMPOSE_FILE:state/rollback.compose.yaml\" docker compose up -d"
     exit 0
 fi
 

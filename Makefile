@@ -17,7 +17,7 @@ help:
 	@echo 'update           pull, back up, swap, roll back if it does not come up'
 	@echo 'rollback         return to the images in state/current.lock'
 	@echo 'gc               reclaim what this installation left behind'
-	@echo 'check            repository checks and every topology`s compose config'
+	@echo 'check            repository checks'
 
 preflight:
 	./scripts/preflight.sh

@@ -58,8 +58,9 @@ digests() {
 #
 # **This brings new compose files and scripts, never new image versions.** Those
 # are tags in `.env`, which belongs to the installation and is not in the
-# repository — see the decision in `docs/specs/DEPLOYMENT.md` about why digests
-# in Git do not apply to a product many people deploy independently.
+# repository. The decision — why digests in Git do not apply to a product many
+# people deploy independently — is `docs/specs/DEPLOYMENT.md` in the AlgoJudge
+# workspace, not a path in this repository.
 
 if $git_pull && [ -d "$ROOT/.git" ]; then
     log "updating the repository"
