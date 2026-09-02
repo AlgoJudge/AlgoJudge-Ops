@@ -17,7 +17,7 @@ CRON_TZ=Europe/Warsaw
 # switch hour before moving these.
 
 # Backup — 04:00 local.
-0 4 * * *  cd /opt/algojudge-ops && ./scripts/backup.sh  >>/var/log/algojudge/backup.log 2>&1
+0 4 * * *  cd /opt/algojudge-ops && ./scripts/backup.sh  >>/var/log/algojudge/backup.log 2>&1 || echo "algojudge: backup.sh failed; see /var/log/algojudge/backup.log"
 
 # Update — 04:15 local. **Commented out on purpose.** Uncomment it only once a
 # restore has been rehearsed at least once.
@@ -26,18 +26,22 @@ CRON_TZ=Europe/Warsaw
 # dump first, so that an installation which does not want automatic updates still
 # gets backups. `flock` in `lib/common.sh` keeps the two from overlapping when a
 # backup runs long.
-#15 4 * * * cd /opt/algojudge-ops && ./scripts/update.sh >>/var/log/algojudge/update.log 2>&1
+#15 4 * * * cd /opt/algojudge-ops && ./scripts/update.sh >>/var/log/algojudge/update.log 2>&1 || echo "algojudge: update.sh failed; see /var/log/algojudge/update.log"
 
 # Garbage collection — 06:00 local.
 #
 # **Not the same 06:00 the Server uses.** The Server's own file collector is
 # anchored to UTC (`Files:CollectAtHourUtc`, 06:00 by default), so the two do not
 # fall at the same moment.
-0 6 * * *  cd /opt/algojudge-ops && ./scripts/gc.sh      >>/var/log/algojudge/gc.log 2>&1
+0 6 * * *  cd /opt/algojudge-ops && ./scripts/gc.sh      >>/var/log/algojudge/gc.log 2>&1 || echo "algojudge: gc.sh failed; see /var/log/algojudge/gc.log"
 
-# **A non-zero exit has to be noticeable somewhere.** Nothing here notifies
-# anybody, so a backup that has been failing for three weeks surfaces during the
-# incident it was meant to survive. Point `MAILTO` at somebody who reads it, or
-# wire the logs into whatever this organisation already watches — see the open
-# question in docs/OPERATIONS.md.
+# **`MAILTO` only carries what a job prints, and these print into a log file.**
+# With `>>… 2>&1` there is nothing left for cron to mail — which is why each line
+# ends with `|| echo`. Cron mails that one line, and only on a non-zero exit;
+# `warn` on an ordinary run stays in the log rather than becoming nightly mail
+# nobody reads.
+#
+# Uncomment this and put an address somebody actually reads behind it. Feeding
+# `/var/log/algojudge/*.log` into whatever this organisation already watches is
+# the other answer — see the open question in docs/OPERATIONS.md.
 #MAILTO=ops@example.org

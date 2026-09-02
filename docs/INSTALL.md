@@ -348,8 +348,14 @@ services:
 ```
 
 ```bash
-docker compose -f compose.yaml -f state/lti.compose.yaml up -d
+COMPOSE_FILE="compose.yaml:state/lti.compose.yaml" docker compose up -d
 ```
+
+**Put that value in `.env`, not on one command line.** `COMPOSE_FILE` is how
+these scripts learn about an overlay at all: `update.sh`, `rollback.sh` and
+`preflight.sh` all compose without naming files, so an overlay given once with
+`-f` is invisible to every one of them — and the next `update` or `rollback`
+composes without it and takes its services away with `--remove-orphans`.
 
 **And the frame header has to go**, if your LMS is on a different name from this
 installation. `X-Frame-Options: SAMEORIGIN` — which `nginx/snippets/security-headers.conf`
