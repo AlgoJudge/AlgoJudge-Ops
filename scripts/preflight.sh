@@ -93,13 +93,17 @@ if runs_service runner runner; then
         # `cgroupfs`; under `systemd` -- the default on RHEL 9+, Fedora and
         # Ubuntu -- the Runner gives up on measuring and says so once, at `info`.
         # Limits are still enforced and submissions still judged, so this warns:
-        # what is lost, silently, is the memory figure beside a verdict.
+        # what is lost, silently, are the numbers beside a verdict.
+        #
+        # This is now the **only** half an operator has to supply: `compose.yaml`
+        # mounts the cgroup tree writable and shares its namespace.
         driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null | tr -d '[:space:]')
         if [ -n "$driver" ] && [ "$driver" != "cgroupfs" ]; then
-            warn "the daemon's cgroup driver is '$driver', not cgroupfs. That is one of
-       the two things peak memory needs -- the other is a writable cgroup tree in
-       the Runner's container, which this stack does not mount. Verdicts arrive
-       without the figure either way; limits are still enforced.
+            warn "the daemon's cgroup driver is '$driver', not cgroupfs. The Runner cannot
+       make a cgroup under it, so peak memory and processor time arrive absent
+       from every verdict. This stack supplies the other half already. Set
+       native.cgroupdriver=cgroupfs in /etc/docker/daemon.json and restart the
+       daemon; limits are enforced either way.
        docs/INSTALL.md has the whole of it."
         fi
 fi

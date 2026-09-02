@@ -263,6 +263,24 @@ services:
       # The Runner starts **sibling** containers through the daemon. Job
       # containers never get the socket themselves.
       - /var/run/docker.sock:/var/run/docker.sock
+      # **Writable, and this is what closes O-14.** The Runner makes a cgroup of
+      # its own, starts each job container under it, and reads `memory.peak` and
+      # `cpu.stat` back once the child is gone — a container's own cgroup does
+      # not outlive it, and the runtime API reports no peak on v2. Without this
+      # the stack judged and reported no memory; from the release that decides a
+      # time limit on processor time, it would not judge at all.
+      #
+      # **Cheaper than it looks**: creating a directory in a mounted cgroup2
+      # needs write permission, not a capability. Nothing here is privileged and
+      # no job container ever sees this mount.
+      #
+      # `cgroup: host` below matters as much as the mount. Without it this
+      # container sees its own cgroup as the root, and the path it creates is not
+      # the path the daemon resolves `--cgroup-parent` against — so the
+      # measurement reads an empty directory rather than failing.
+      - /sys/fs/cgroup:/sys/fs/cgroup
+
+    cgroup: host
 
     # **The group, not root.** The image runs as `nonroot`; on a Linux host the
     # socket is `root:docker` mode 660, so adding the group keeps the process

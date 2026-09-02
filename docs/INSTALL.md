@@ -16,25 +16,37 @@ From an empty directory to an installation that judges a submission.
   trusting the flag. Compose v2 is enough because every value here is passed
   through `environment:` — nothing in this repository uses the `env_file:` form
   that needs 2.24.
-- **This stack does not report peak memory, and that is worth knowing rather
-  than discovering.** Every limit is enforced and every submission judged; what
-  is missing is the number beside the verdict, announced by one `info` line in
-  the Runner's log and nowhere else.
-
-  It needs **two** things, and this repository supplies neither by itself. The
-  daemon's cgroup driver must be `cgroupfs` — under `systemd`, the default on
-  RHEL 9+, Fedora and Ubuntu, a cgroup parent is not a path at all:
+- **The daemon's cgroup driver must be `cgroupfs`.** This is the one host
+  requirement an operator is most likely to fail, because `systemd` is the
+  default on RHEL 9+, Fedora and Ubuntu — and under `systemd` a cgroup parent is
+  not a path at all, so the Runner cannot make one:
 
   ```bash
   stat -fc %T /sys/fs/cgroup                 # cgroup2fs
   docker info --format '{{.CgroupDriver}}'   # cgroupfs
   ```
 
-  And the Runner has to be able to **create** a cgroup, which means a writable
-  `/sys/fs/cgroup` in its container. `compose.yaml` mounts none, deliberately:
-  handing a container write access to the host's cgroup tree is a decision an
-  installation makes, not a default it inherits. Until it does, the driver alone
-  changes nothing.
+  If it prints anything else, set it and restart the daemon:
+
+  ```bash
+  # /etc/docker/daemon.json
+  { "exec-opts": ["native.cgroupdriver=cgroupfs"] }
+  ```
+
+  **What is at stake is the numbers a participant reads beside a verdict.** The
+  Runner makes a cgroup of its own and reads `memory.peak` and `cpu.stat` back
+  out of it; neither is available any other way, because a container's own cgroup
+  does not outlive it and the runtime API reports no peak on v2. Without the
+  right driver the stack still enforces every limit — what it loses is the
+  measurement.
+
+  `compose.yaml` supplies the other half: **`/sys/fs/cgroup` mounted writable,
+  plus `cgroup: host`** so that the path the Runner creates is the path the
+  daemon resolves against. That used to be left to the installation on the
+  grounds that write access to the host's cgroup tree is a decision rather than a
+  default. It is now a default, because a measurement the product promises and
+  never delivers is worse than the decision it was avoiding — and it costs write
+  permission on one directory, not a capability.
 
   `preflight.sh` warns about the driver, which is the half it can see.
 - **`bash`, `openssl`, `find`, `du`, `df`** — the scripts use nothing else.
