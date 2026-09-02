@@ -89,22 +89,36 @@ if runs_service runner runner; then
             fi
         fi
 
-        # **The driver, not only the version.** A cgroup parent is a path under
-        # `cgroupfs`; under `systemd` -- the default on RHEL 9+, Fedora and
-        # Ubuntu -- the Runner gives up on measuring and says so once, at `info`.
-        # Limits are still enforced and submissions still judged, so this warns:
-        # what is lost, silently, are the numbers beside a verdict.
+        # **The cgroup version, which was never checked here at all.** The
+        # Runner refuses v1 at start, so a stack on such a host comes up and the
+        # Runner does not -- which reads as the Runner being broken rather than
+        # as the host being wrong.
+        version=$(docker info --format '{{.CgroupVersion}}' 2>/dev/null | tr -d '[:space:]')
+        if [ -n "$version" ] && [ "$version" != "2" ]; then
+            report "this host reports cgroup v$version, and the Runner requires v2. It will
+       refuse to start: a time limit is decided on processor time read from
+       cpu.stat, which is a v2 interface. The limits would be enforced on v1 --
+       what cannot be done there is reach a verdict at all."
+        fi
+
+        # **The driver, and it stopped being a warning on 2026-09-02.** A cgroup
+        # parent is a path under `cgroupfs`; under `systemd` -- the default on
+        # RHEL 9+, Fedora and Ubuntu -- the Runner cannot make one. This warned
+        # while the consequence was numbers missing from a verdict. The
+        # consequence now is that the Runner refuses to start, so warning and
+        # then starting the stack would hand the operator a broken installation
+        # and a note about it.
         #
-        # This is now the **only** half an operator has to supply: `compose.yaml`
-        # mounts the cgroup tree writable and shares its namespace.
+        # `compose.yaml` supplies the other half -- the writable mount and the
+        # shared namespace -- so this is the only half left to an operator.
         driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null | tr -d '[:space:]')
         if [ -n "$driver" ] && [ "$driver" != "cgroupfs" ]; then
-            warn "the daemon's cgroup driver is '$driver', not cgroupfs. The Runner cannot
-       make a cgroup under it, so peak memory and processor time arrive absent
-       from every verdict. This stack supplies the other half already. Set
-       native.cgroupdriver=cgroupfs in /etc/docker/daemon.json and restart the
-       daemon; limits are enforced either way.
-       docs/INSTALL.md has the whole of it."
+            report "the daemon's cgroup driver is '$driver', not cgroupfs. The Runner cannot
+       make a cgroup under it, and a time limit is decided on processor time read
+       out of one -- so it will refuse to start rather than judge without it:
+           # /etc/docker/daemon.json
+           { \"exec-opts\": [\"native.cgroupdriver=cgroupfs\"] }
+       then restart the daemon. docs/INSTALL.md has the whole of it."
         fi
 fi
 

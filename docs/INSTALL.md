@@ -48,7 +48,12 @@ From an empty directory to an installation that judges a submission.
   never delivers is worse than the decision it was avoiding — and it costs write
   permission on one directory, not a capability.
 
-  `preflight.sh` warns about the driver, which is the half it can see.
+  **`preflight.sh` refuses on the driver, and on a cgroup version below 2.** It
+  warned about the first and never checked the second, which was right while the
+  consequence was a number missing from a verdict. The Runner now refuses to
+  start without the reading, so a stack that came up with a note about it would
+  be a broken installation the operator had been told about rather than one they
+  had been stopped from making.
 - **`bash`, `openssl`, `find`, `du`, `df`** — the scripts use nothing else.
 - **Disk for backups**, ideally on a **different filesystem** from the
   PostgreSQL volume. On one filesystem no reserve setting can guarantee that a
