@@ -253,6 +253,25 @@ To run fewer, remove the services you do not want from `compose.yaml` and leave
 their `RUNNER_*_CPUSET` unset. To pin them, see `.env.example`, which explains
 how to read a core's threads off the machine rather than guessing them.
 
+### What a submission costs, and why some problems cost twice as much
+
+**A Runner's time goes on starting containers, not on running programs.** Each
+test runs in a container of its own — that is what makes the isolation worth
+having — and starting one costs more processor time than most solutions spend
+in it. A problem with 148 tests is 148 container starts for every submission,
+which is why the count of tests, and not the difficulty, decides how long a
+submission takes.
+
+**A problem whose answers are judged by a program is two containers per test**,
+not one: the submission runs, then the package's own checker runs beside it to
+say whether the answer is right. On such a problem a Runner gets through about
+half as many submissions in the same time. Any problem type that has to run a
+second program alongside the submission has the same shape.
+
+Nothing here needs configuring. It is worth knowing because two installations
+with the same hardware and the same number of Runners can differ by a factor of
+two in how fast a contest is judged, and the difference is in the problems.
+
 ## 5. Approve the Runners
 
 **A new Runner registers and then waits.** It is not a fault and there is no
