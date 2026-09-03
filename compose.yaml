@@ -211,7 +211,7 @@ services:
 
   # ── The Runner ──────────────────────────────────────────────────────────────
 
-  runner:
+  runner-1: &runner
     profiles: ["runner"]
     image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-runner:${RUNNER_TAG:-1}
     restart: unless-stopped
@@ -220,13 +220,13 @@ services:
     # on its own on a separate host, where there is no Server service to depend
     # on. The Runner retries its own connection.
 
-    environment:
+    environment: &runner-env
       # Must carry `/api/v1`; the Runner refuses at startup without it. On the
       # same host this is the container name, and on a Runner-only host it is the
       # installation's public HTTPS address.
       AJ_Server__BaseUrl: ${SERVER_URL:-http://server:8080}/api/v1
 
-      AJ_Runner__Name: ${RUNNER_NAME:-runner-1}
+      AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-1
       AJ_Runner__ProblemTypes: ${RUNNER_PROBLEM_TYPES:-standard-io@1,output-only@1}
 
       # **Read once, at the first registration, and never again.** A Runner that
@@ -250,16 +250,16 @@ services:
       # cannot open produces an **empty directory** rather than an error — so
       # every job silently runs against nothing. It must equal the host side of
       # the bind mount below, which is why both come from one variable.
-      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-1
 
       RUST_LOG: ${RUNNER_LOG:-info}
 
     volumes:
       # **The identity key, and losing it costs a re-registration and a manual
       # approval.** A named volume, so it survives `down` and an image change.
-      - runner-identity:/var/lib/algojudge-runner
+      - runner-1-identity:/var/lib/algojudge-runner
       - runner-cache:/var/cache/algojudge-runner
-      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}:/var/lib/algojudge-runner/work
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-1:/var/lib/algojudge-runner/work
       # The Runner starts **sibling** containers through the daemon. Job
       # containers never get the socket themselves.
       - /var/run/docker.sock:/var/run/docker.sock
@@ -317,8 +317,78 @@ services:
     # expires; a clean drain is `scripts/maintenance.sh` on the Server first.
     stop_grace_period: ${RUNNER_STOP_GRACE:-30s}
 
+    # **Which processors this Runner may use, and it is a correctness setting
+    # rather than a tuning one.** Empty is the safe default: the Runner reads its
+    # own affinity, finds it may use the whole machine, and pins nothing -- the
+    # host's scheduler then places every job, which is the right answer when
+    # nobody has divided the machine up.
+    #
+    # Set it and the Runner hands that same set to every job container, because a
+    # job container is the daemon's child and inherits no affinity of its own.
+    # **One Runner per physical core, both of that core's threads**: `0,1` here,
+    # `2,3` next door. A core's two threads share their caches, so a job moving
+    # between them costs nothing, and no other Runner is on that core to take its
+    # execution units.
+    #
+    # **Read the pairs from the machine rather than assuming them.**
+    # `/sys/devices/system/cpu/cpu0/topology/thread_siblings_list` names cpu0's
+    # partner -- `0-1` on one host and `0,8` on another -- and a list written for
+    # the first is exactly wrong on the second.
+    cpuset: ${RUNNER_1_CPUSET:-}
+
     networks:
       - runner
+
+
+  # **The other three, and they differ in four things only**: their name, their
+  # identity, their scratch and their processors. Everything else is `<<:
+  # *runner`, so what is written above governs all four and cannot drift.
+  #
+  # **Four is the reference, not a minimum.** It suits a machine with eight
+  # physical cores, leaving four for the Server, the database, the daemon and the
+  # operating system. On a smaller host, run fewer: more Runners than physical
+  # cores does not judge faster and does stop judging accurately.
+  runner-2:
+    <<: *runner
+    environment:
+      <<: *runner-env
+      AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-2
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-2
+    volumes:
+      - runner-2-identity:/var/lib/algojudge-runner
+      - runner-cache:/var/cache/algojudge-runner
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-2:/var/lib/algojudge-runner/work
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/sys/fs/cgroup
+    cpuset: ${RUNNER_2_CPUSET:-}
+
+  runner-3:
+    <<: *runner
+    environment:
+      <<: *runner-env
+      AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-3
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-3
+    volumes:
+      - runner-3-identity:/var/lib/algojudge-runner
+      - runner-cache:/var/cache/algojudge-runner
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-3:/var/lib/algojudge-runner/work
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/sys/fs/cgroup
+    cpuset: ${RUNNER_3_CPUSET:-}
+
+  runner-4:
+    <<: *runner
+    environment:
+      <<: *runner-env
+      AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-4
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-4
+    volumes:
+      - runner-4-identity:/var/lib/algojudge-runner
+      - runner-cache:/var/cache/algojudge-runner
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-4:/var/lib/algojudge-runner/work
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/sys/fs/cgroup
+    cpuset: ${RUNNER_4_CPUSET:-}
 
   # ── The External Runner ─────────────────────────────────────────────────────
   #
@@ -404,7 +474,10 @@ networks:
 volumes:
   pgdata:
   objects:                   # unread under STORAGE_KIND=postgres
-  runner-identity:
+  runner-1-identity:
+  runner-2-identity:
+  runner-3-identity:
+  runner-4-identity:
   runner-cache:              # 10 GiB, bounded by the Runner
   external-runner-identity:
   external-runner-cache:     # 256 MiB, bounded by the image

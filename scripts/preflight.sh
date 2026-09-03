@@ -35,7 +35,7 @@ fi
 
 # ── The Runner's work directory ─────────────────────────────────────────────
 
-if runs_service runner runner; then
+if runs_service runner-1 runner; then
         if [ -z "${RUNNER_WORK_DIR:-}" ]; then
             report "RUNNER_WORK_DIR is empty and this installation starts the Runner. It must
        be an absolute host path — see .env.example."
