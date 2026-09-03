@@ -160,21 +160,75 @@ number in it. `preflight.sh` checks both, so start there.
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine stat -c '%g' /var/run/docker.sock
 ```
 
-On Docker Desktop that is `0`; on a Linux host it is the `docker` group's id. If
-this is the cause, the Runner fails at **startup** and never reaches a job.
+On Docker Desktop that is `0`; on a Linux host it is the `docker` group's id.
+Since the runner service runs as root this cannot be the cause any more — root
+opens the socket whatever groups it is in — but a stack installed before
+2026-09-03, or one whose `compose.yaml` has been edited, can still meet it. If
+it is the cause, the Runner fails at **startup** and never reaches a job.
 
-**Two: `RUNNER_WORK_DIR` belongs to somebody else.** Compose creates a missing
-bind-mount source **as root, mode 0755**, and the Runner runs as uid **65532**.
-The socket then works perfectly, the Runner registers, claims a job — and every
-single one fails at once, which is how to tell the two apart.
+**Two: `RUNNER_WORK_DIR` cannot be read by a job container.** The Runner writes
+a submission's files there as root; every job container mounts the directory
+**read-only** and reads it as uid **65534**. A directory locked down by hand
+passes for the Runner and fails for the job, so the socket works perfectly, the
+Runner registers, claims a job — and every single one fails at once, which is
+how to tell the two apart.
 
 ```bash
-sudo mkdir -p /srv/algojudge/runner-work
-sudo chown 65532:65532 /srv/algojudge/runner-work
+sudo chmod 755 /srv/algojudge/runner-work
 ```
 
+Compose creating the directory itself is fine: it makes it as root, mode 0755,
+which satisfies both. `preflight.sh` probes both halves — writing as root, then
+reading back as 65534.
+
 Measured 2026-09-01 on a stack whose socket was reachable and whose every
-submission still failed.
+submission still failed. The ownership it needed then was `65532`, which is what
+the Runner ran as until 2026-09-03.
+
+## Every job fails, and the Runner said something about cgroups
+
+**A time limit is decided on processor time**, read from a cgroup the sandbox is
+started under. A Runner that cannot read one refuses to start rather than judge
+without it, so this is a startup message and not a per-job one:
+
+```bash
+docker compose logs runner | head -40
+```
+
+Three things it can be, and `preflight.sh` catches the first two before `make
+up` starts anything:
+
+| What it says | What to do |
+|---|---|
+| cgroup version 1 | the host boots a hybrid hierarchy. `systemd.unified_cgroup_hierarchy=1` on the kernel command line, then reboot |
+| a cgroup driver it knows neither of | `docker info --format '{{.CgroupDriver}}'` must print `cgroupfs` or `systemd`. Anything else means cgroups are off |
+| it cannot read the hierarchy | `compose.yaml` has been edited: the `/sys/fs/cgroup` mount, `cgroup: host` or `user: "0:0"` on the runner service is missing |
+
+**Both cgroup drivers work and neither needs the daemon reconfigured.** Until
+2026-09-03 the Runner required `cgroupfs`, and `systemd` is the default almost
+everywhere, so an installation of that vintage may still carry a
+`native.cgroupdriver=cgroupfs` line in `/etc/docker/daemon.json`. It does no
+harm; it is simply no longer needed.
+
+## The verdicts are right but no memory is reported
+
+Only on a host using the **`systemd`** cgroup driver, and the Runner says so at
+`ERROR` on every start. One slice serves every run there, so a per-run peak is
+taken by resetting `memory.peak` — a kernel interface that arrived in **Linux
+6.8**. Processor time is unaffected, so every verdict stands.
+
+```bash
+uname -r
+```
+
+On an older kernel, either accept it or give the daemon the `cgroupfs` driver,
+where the peak is read from a fresh cgroup per run and needs nothing beyond
+Linux 5.19:
+
+```bash
+# /etc/docker/daemon.json
+{ "exec-opts": ["native.cgroupdriver=cgroupfs"] }
+```
 
 ## nginx will not start
 
