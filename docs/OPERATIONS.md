@@ -327,6 +327,28 @@ bounds `runner-cache` at 10 GiB and the External Runner bounds
 they survive `down` and an image change — and deleting either costs a download
 rather than a job.
 
+**Cgroups are deliberately absent too, and one thing is left on the host by
+design.** A Runner measures from a cgroup named after its key fingerprint —
+under the `systemd` driver a slice, `algojudge-<fingerprint>.slice`, under
+`cgroupfs` a directory. **It is not removed when the Runner stops**, and the
+Runner cannot remove it: `rmdir` on a live slice is undone by systemd, and
+stopping the unit needs a D-Bus connection the Runner deliberately does not
+hold.
+
+What that costs is **one empty slice per Runner identity that has judged
+something** — measured 2026-09-03, and it is one rather than many for a reason
+worth knowing: the slice comes into being only when a container is first started
+under it, so a Runner that registered and waited for approval leaves nothing. It
+grows only when identities are recreated, which is a development habit
+(`down -v` destroys the identity volume) rather than an installation's.
+
+An operator who wants them gone stops them by hand, and a reboot clears them:
+
+```bash
+systemctl list-units --type=slice 'algojudge-*'
+sudo systemctl stop 'algojudge-*.slice'
+```
+
 **`VACUUM` and `REINDEX` are deliberately absent.** Different risk, different
 runtime — a `REINDEX` holds locks a contest would notice — and autovacuum already
 does the routine part. Putting them in a nightly job is its own decision.
