@@ -16,44 +16,55 @@ From an empty directory to an installation that judges a submission.
   trusting the flag. Compose v2 is enough because every value here is passed
   through `environment:` — nothing in this repository uses the `env_file:` form
   that needs 2.24.
-- **The daemon's cgroup driver must be `cgroupfs`.** This is the one host
-  requirement an operator is most likely to fail, because `systemd` is the
-  default on RHEL 9+, Fedora and Ubuntu — and under `systemd` a cgroup parent is
-  not a path at all, so the Runner cannot make one:
+- **The cgroup tree, and no daemon reconfiguration.** The stack measures a
+  submission's processor time and peak memory from a cgroup, because neither is
+  available any other way: a container's own cgroup does not outlive it, and the
+  runtime API reports no peak on v2. **A time limit is decided on that
+  processor time**, so a Runner that cannot read it refuses to start rather than
+  judge without it.
 
   ```bash
-  stat -fc %T /sys/fs/cgroup                 # cgroup2fs
-  docker info --format '{{.CgroupDriver}}'   # cgroupfs
+  stat -fc %T /sys/fs/cgroup                  # cgroup2fs
+  docker info --format '{{.CgroupDriver}}'    # cgroupfs or systemd; both work
   ```
 
-  If it prints anything else, set it and restart the daemon:
+  **Either cgroup driver is fine.** This was the one host requirement an
+  operator was most likely to fail — until 2026-09-03 the Runner needed
+  `cgroupfs`, and `systemd` is the default on virtually every Linux server, so
+  an installation began by editing `/etc/docker/daemon.json` and restarting the
+  daemon. It no longer does. Under `cgroupfs` the Runner makes a cgroup per run;
+  under `systemd`, where cgroups belong to systemd, it keeps one slice for its
+  whole life and reads each run as the change across it.
 
-  ```bash
-  # /etc/docker/daemon.json
-  { "exec-opts": ["native.cgroupdriver=cgroupfs"] }
-  ```
+  `compose.yaml` supplies everything else: **`/sys/fs/cgroup` mounted writable,
+  `cgroup: host`** so that the path the Runner reads is the path the daemon
+  resolved against, and **`user: "0:0"`** because that tree's directories are
+  root's. That used to be left to the installation on the grounds that write
+  access to the host's cgroup tree is a decision rather than a default. It is
+  now a default, because the alternative is a stack that does not judge — and it
+  costs write permission on one directory tree, not a capability. The Runner
+  holds the Docker socket in any case, which is root-equivalent on the host, so
+  the uid inside its container was never the boundary; `docs/OPERATIONS.md`
+  says what follows from that. Nothing it *starts* gains anything: a job
+  container still runs as `65534:65534` with every capability dropped.
 
-  **What is at stake is the numbers a participant reads beside a verdict.** The
-  Runner makes a cgroup of its own and reads `memory.peak` and `cpu.stat` back
-  out of it; neither is available any other way, because a container's own cgroup
-  does not outlive it and the runtime API reports no peak on v2. Without the
-  right driver the stack still enforces every limit — what it loses is the
-  measurement.
+  **The two backends do not need those equally.** Under `cgroupfs` the Runner
+  creates a cgroup, so a writable mount and root are what let it start at all;
+  without them it refuses. Under `systemd` it creates nothing and only reads, so
+  it starts and judges either way, and what root and the writable mount buy is
+  the **peak-memory number**. Measured on all four combinations, 2026-09-03.
 
-  `compose.yaml` supplies the other half: **`/sys/fs/cgroup` mounted writable,
-  plus `cgroup: host`** so that the path the Runner creates is the path the
-  daemon resolves against. That used to be left to the installation on the
-  grounds that write access to the host's cgroup tree is a decision rather than a
-  default. It is now a default, because a measurement the product promises and
-  never delivers is worse than the decision it was avoiding — and it costs write
-  permission on one directory, not a capability.
+  **A `systemd` host can lose that number for a second reason, and it is still
+  not the verdict.** The reset of `memory.peak` arrived in **Linux 6.8**. On an
+  older kernel the Runner judges exactly as it should — the verdict is processor
+  time — and says at `ERROR` on every start that the number beside it will be
+  absent. `cgroupfs` reports it on any kernel from 5.19.
 
-  **`preflight.sh` refuses on the driver, and on a cgroup version below 2.** It
-  warned about the first and never checked the second, which was right while the
-  consequence was a number missing from a verdict. The Runner now refuses to
-  start without the reading, so a stack that came up with a note about it would
-  be a broken installation the operator had been told about rather than one they
-  had been stopped from making.
+  **`preflight.sh` refuses on a cgroup version below 2**, and on a driver that
+  is neither of the two. It refuses rather than warning because the Runner now
+  refuses to start without the reading, so a stack that came up with a note
+  about it would be a broken installation the operator had been told about
+  rather than one they had been stopped from making.
 - **`bash`, `openssl`, `find`, `du`, `df`** — the scripts use nothing else.
 - **Disk for backups**, ideally on a **different filesystem** from the
   PostgreSQL volume. On one filesystem no reserve setting can guarantee that a
@@ -135,18 +146,23 @@ daemon, and **a path the daemon cannot open becomes an empty directory rather
 than an error** — every submission then runs against nothing and no test fails
 visibly. `preflight.sh` refuses a relative one for that reason.
 
-**Make it yourself, and give it to uid 65532**, before the first start:
+**Make it yourself before the first start**, or let Compose make it — either is
+fine now:
 
 ```bash
 sudo mkdir -p /srv/algojudge/runner-work
-sudo chown 65532:65532 /srv/algojudge/runner-work
 ```
 
-Compose creates a missing bind-mount source as **root, mode 0755**, and the
-Runner runs unprivileged. It then starts, reaches the daemon, registers, claims a
-job and fails every one of them with `Permission denied (os error 13)` — the same
-sentence a wrong `DOCKER_GID` produces, which is why `preflight.sh` probes the
-directory separately and says which of the two it is.
+Compose creates a missing bind-mount source as **root, mode 0755**, which is
+exactly right: the Runner writes there as root, and every job container mounts
+it **read-only** and reads it as uid 65534. What breaks it is a directory locked
+down by hand — jobs then fail with `Permission denied (os error 13)` from inside
+the sandbox layer. `preflight.sh` probes both halves, writing as root and
+reading back as 65534, and says which one failed.
+
+*This asked for `chown 65532:65532` until 2026-09-03, when the Runner started
+running as root so that it could measure. That ownership still works and costs
+nothing; it is simply no longer needed.*
 
 Two more worth reading before the first start:
 
@@ -155,7 +171,8 @@ Two more worth reading before the first start:
   on, and must be a **network** address: `172.28.0.5/24` is refused at startup,
   by name, with the address it should have been.
 - **`DOCKER_GID`** is the group that owns the daemon's socket. The Runner runs
-  unprivileged and reaches the daemon only through it. `preflight.sh` reads the
+  as root and reaches the socket whatever groups it is in, so a wrong value no
+  longer stops anything and `preflight.sh` only warns about it. `preflight.sh` reads the
   real number and tells you if yours is wrong — on Docker Desktop the socket is
   `root:root`, so it is `0`; on a Linux host it is the `docker` group's id:
 

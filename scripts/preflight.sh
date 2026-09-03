@@ -66,27 +66,45 @@ if runs_service runner runner; then
             warn "could not read the group of /var/run/docker.sock. If the Runner logs
        'Permission denied (os error 13)', DOCKER_GID is the reason."
         elif [ "$socket_gid" != "$(setting DOCKER_GID 999)" ]; then
-            report "DOCKER_GID is $(setting DOCKER_GID 999) and the daemon's socket is owned by group
-       $socket_gid. The Runner runs unprivileged and reaches the daemon only
-       through that group, so as written it will start, fail to open the socket,
-       and restart for ever. Write DOCKER_GID=$socket_gid."
+            # **A warning rather than a refusal since 2026-09-03**, when the
+            # runner service became `user: "0:0"` so that it could measure. Root
+            # opens the socket whatever groups it is in, so a wrong value no
+            # longer stops anything -- but it is still wrong, and it is what an
+            # installation would need again if the Runner ever went back to
+            # running unprivileged.
+            warn "DOCKER_GID is $(setting DOCKER_GID 999) and the daemon's socket is owned by group
+       $socket_gid. The Runner runs as root, so it reaches the socket anyway and
+       nothing is broken by this. Write DOCKER_GID=$socket_gid."
         fi
 
-        # **Whether the Runner can write into it, asked of the daemon.**
+        # **Two halves, because two different users touch it.** The Runner
+        # writes into this directory as root; every job container mounts it
+        # **read-only** and reads it as uid 65534. So it has to be writable by
+        # root -- which a read-only filesystem or a path the daemon cannot open
+        # would deny -- and readable by everyone else.
         #
-        # `Compose creates it` is true and is the trap: it creates it as
-        # **root**, mode 0755, and the Runner runs as uid 65532. Every job then
-        # fails with `Permission denied (os error 13)` from deep inside the
-        # sandbox layer -- the same sentence a wrong DOCKER_GID produces, which
-        # is why the two are checked apart. Probed in a container because this
-        # path belongs to the daemon's filesystem rather than to this shell's.
+        # `Compose creates it` is true and is the trap: it creates it as root,
+        # mode 0755, which passes both halves. A directory chowned and locked
+        # down by hand passes the first and fails the second, and the symptom is
+        # every job failing with 'Permission denied (os error 13)' from deep
+        # inside the sandbox layer -- the same sentence a wrong DOCKER_GID used
+        # to produce, which is why they are checked apart. Probed in containers
+        # because this path belongs to the daemon's filesystem, not this shell's.
         if [ -n "${RUNNER_WORK_DIR:-}" ] && [ "${RUNNER_WORK_DIR#/}" != "$RUNNER_WORK_DIR" ]; then
-            if ! MSYS_NO_PATHCONV=1 docker run --rm -u 65532:65532                 -v "$RUNNER_WORK_DIR:/work" "nginx:$(setting NGINX_TAG 1.27-alpine)"                 sh -c 'touch /work/.algojudge-probe && rm -f /work/.algojudge-probe'                 >/dev/null 2>&1; then
-                report "the Runner cannot write into RUNNER_WORK_DIR. It runs as uid 65532 and
-       the directory is somebody else's -- root's, if Docker created it. Every
-       job would fail with 'Permission denied (os error 13)':
-           sudo mkdir -p $RUNNER_WORK_DIR && sudo chown 65532:65532 $RUNNER_WORK_DIR"
+            probe_image="nginx:$(setting NGINX_TAG 1.27-alpine)"
+            if ! MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'echo probe > /work/.algojudge-probe' >/dev/null 2>&1; then
+                report "the Runner cannot write into RUNNER_WORK_DIR. It runs as root, so this
+       is a read-only filesystem or a path the daemon cannot open:
+           sudo mkdir -p $RUNNER_WORK_DIR"
+            elif ! MSYS_NO_PATHCONV=1 docker run --rm -u 65534:65534                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'cat /work/.algojudge-probe' >/dev/null 2>&1; then
+                report "a job container could not read RUNNER_WORK_DIR. The Runner writes a
+       submission's files there as root and every job container reads them back
+       as uid 65534, so the directory has to be searchable and its files
+       readable by others. Every job would fail with 'Permission denied
+       (os error 13)':
+           sudo chmod 755 $RUNNER_WORK_DIR"
             fi
+            MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'rm -f /work/.algojudge-probe' >/dev/null 2>&1 || true
         fi
 
         # **The cgroup version, which was never checked here at all.** The
@@ -101,25 +119,25 @@ if runs_service runner runner; then
        what cannot be done there is reach a verdict at all."
         fi
 
-        # **The driver, and it stopped being a warning on 2026-09-02.** A cgroup
-        # parent is a path under `cgroupfs`; under `systemd` -- the default on
-        # RHEL 9+, Fedora and Ubuntu -- the Runner cannot make one. This warned
-        # while the consequence was numbers missing from a verdict. The
-        # consequence now is that the Runner refuses to start, so warning and
-        # then starting the stack would hand the operator a broken installation
-        # and a note about it.
+        # **The driver, and both of them are fine since 2026-09-03.** A cgroup
+        # parent is a path under `cgroupfs` and a slice under `systemd`, and the
+        # Runner knows how to measure under either -- so this refuses only a
+        # daemon that reports neither, which means cgroups are switched off and
+        # nothing can be measured at all.
         #
-        # `compose.yaml` supplies the other half -- the writable mount and the
-        # shared namespace -- so this is the only half left to an operator.
+        # It refused `systemd` until then, which was the default on almost every
+        # host this stack is installed on, and the remedy it printed was to edit
+        # the daemon configuration and restart it. That is gone.
         driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null | tr -d '[:space:]')
-        if [ -n "$driver" ] && [ "$driver" != "cgroupfs" ]; then
-            report "the daemon's cgroup driver is '$driver', not cgroupfs. The Runner cannot
-       make a cgroup under it, and a time limit is decided on processor time read
-       out of one -- so it will refuse to start rather than judge without it:
-           # /etc/docker/daemon.json
-           { \"exec-opts\": [\"native.cgroupdriver=cgroupfs\"] }
-       then restart the daemon. docs/INSTALL.md has the whole of it."
-        fi
+        case "$driver" in
+            "" | cgroupfs | systemd) ;;
+            *)
+                report "the daemon's cgroup driver is '$driver', and the Runner knows cgroupfs
+       and systemd. A time limit is decided on processor time read from a cgroup,
+       so with neither there is nothing to read it from and the Runner will
+       refuse to start rather than judge without it."
+                ;;
+        esac
 fi
 
 # ── The external Runner's account ───────────────────────────────────────────
