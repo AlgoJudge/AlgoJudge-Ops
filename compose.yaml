@@ -270,12 +270,11 @@ services:
       # Without this the stack would not judge at all: a time limit is decided
       # on the processor time that read produces.
       #
-      # **No daemon reconfiguration**, since 2026-09-03. Which cgroup this is
-      # depends on the daemon's cgroup driver — a directory the Runner makes
-      # under `cgroupfs`, a slice systemd owns under `systemd` — and the Runner
-      # chooses at start from what the daemon reports. `systemd` is the default
-      # on virtually every host this stack is installed on, and it used to be
-      # refused, so an installation began by editing `/etc/docker/daemon.json`.
+      # **No daemon reconfiguration.** Which cgroup this is depends on the
+      # daemon's cgroup driver — a directory the Runner makes under `cgroupfs`,
+      # a slice systemd owns under `systemd` — and the Runner chooses at start
+      # from what the daemon reports. `systemd` is the default on virtually
+      # every host this stack is installed on, and both are supported.
       #
       # **Cheaper than it looks**: this is write permission on one directory
       # tree, not a capability. Nothing here is privileged and no job container

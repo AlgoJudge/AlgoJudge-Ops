@@ -280,11 +280,10 @@ since.
 It is killed, and its job goes back on the queue when the lease expires.
 
 **So `stop_grace_period` is a cost, not a courtesy**, and it is paid on every
-`down`, every `stop` and every update. It shipped at 300s until 2026-09-01,
-which is where five minutes of silence at the end of `docker compose down` came
-from; it is 30s now, and nothing is lost by that — the job returns to the queue
-whichever second the Runner died in. Measured on the same stack: **302 s before,
-32 s after**.
+`down`, every `stop` and every update. It is **30s**, and nothing is lost by
+that — the job returns to the queue whichever second the Runner died in. At the
+Compose default of 300s a `docker compose down` spends five minutes in silence:
+measured on this stack, **302 s against 32 s**.
 
 **Two things stop that change reaching an installation that already exists**,
 and both are worth knowing before you conclude it did not work:
@@ -451,11 +450,10 @@ done
 docker build -t ghcr.io/algojudge/algojudge-external-runner:1 AlgoJudge-External-Runner
 ```
 
-**`-f` is relative to where you are standing, not to the context.** The line
-above said `-f AlgoJudge.Server/Dockerfile` until 2026-09-01 and failed from the
-workspace root with `lstat AlgoJudge.Server: no such file or directory` — the
-only one of the eight builds that had a path in it, and the only one that was
-wrong.
+**`-f` is relative to where you are standing, not to the context.** Writing it
+as `-f AlgoJudge.Server/Dockerfile` fails from the workspace root with `lstat
+AlgoJudge.Server: no such file or directory`. It is the only one of the eight
+builds with a path in it, which is why it is the one worth checking.
 
 **Rebuild rather than reuse a tag you already have.** These images are pinned by
 a moving tag, so a stale local `:1` is silently whatever you built last month —
