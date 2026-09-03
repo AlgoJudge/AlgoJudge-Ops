@@ -280,11 +280,10 @@ since.
 It is killed, and its job goes back on the queue when the lease expires.
 
 **So `stop_grace_period` is a cost, not a courtesy**, and it is paid on every
-`down`, every `stop` and every update. It shipped at 300s until 2026-09-01,
-which is where five minutes of silence at the end of `docker compose down` came
-from; it is 30s now, and nothing is lost by that — the job returns to the queue
-whichever second the Runner died in. Measured on the same stack: **302 s before,
-32 s after**.
+`down`, every `stop` and every update. It is **30s**, and nothing is lost by
+that — the job returns to the queue whichever second the Runner died in. At the
+Compose default of 300s a `docker compose down` spends five minutes in silence:
+measured on this stack, **302 s against 32 s**.
 
 **Two things stop that change reaching an installation that already exists**,
 and both are worth knowing before you conclude it did not work:
@@ -326,6 +325,28 @@ bounds `runner-cache` at 10 GiB and the External Runner bounds
 `external-runner-cache` at 256 MiB, both from inside. They are named volumes, so
 they survive `down` and an image change — and deleting either costs a download
 rather than a job.
+
+**Cgroups are deliberately absent too, and one thing is left on the host by
+design.** A Runner measures from a cgroup named after its key fingerprint —
+under the `systemd` driver a slice, `algojudge-<fingerprint>.slice`, under
+`cgroupfs` a directory. **It is not removed when the Runner stops**, and the
+Runner cannot remove it: `rmdir` on a live slice is undone by systemd, and
+stopping the unit needs a D-Bus connection the Runner deliberately does not
+hold.
+
+What that costs is **one empty slice per Runner identity that has judged
+something** — measured 2026-09-03, and it is one rather than many for a reason
+worth knowing: the slice comes into being only when a container is first started
+under it, so a Runner that registered and waited for approval leaves nothing. It
+grows only when identities are recreated, which is a development habit
+(`down -v` destroys the identity volume) rather than an installation's.
+
+An operator who wants them gone stops them by hand, and a reboot clears them:
+
+```bash
+systemctl list-units --type=slice 'algojudge-*'
+sudo systemctl stop 'algojudge-*.slice'
+```
 
 **`VACUUM` and `REINDEX` are deliberately absent.** Different risk, different
 runtime — a `REINDEX` holds locks a contest would notice — and autovacuum already
@@ -429,11 +450,10 @@ done
 docker build -t ghcr.io/algojudge/algojudge-external-runner:1 AlgoJudge-External-Runner
 ```
 
-**`-f` is relative to where you are standing, not to the context.** The line
-above said `-f AlgoJudge.Server/Dockerfile` until 2026-09-01 and failed from the
-workspace root with `lstat AlgoJudge.Server: no such file or directory` — the
-only one of the eight builds that had a path in it, and the only one that was
-wrong.
+**`-f` is relative to where you are standing, not to the context.** Writing it
+as `-f AlgoJudge.Server/Dockerfile` fails from the workspace root with `lstat
+AlgoJudge.Server: no such file or directory`. It is the only one of the eight
+builds with a path in it, which is why it is the one worth checking.
 
 **Rebuild rather than reuse a tag you already have.** These images are pinned by
 a moving tag, so a stale local `:1` is silently whatever you built last month —

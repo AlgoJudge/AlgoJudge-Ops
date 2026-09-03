@@ -66,12 +66,11 @@ if runs_service runner runner; then
             warn "could not read the group of /var/run/docker.sock. If the Runner logs
        'Permission denied (os error 13)', DOCKER_GID is the reason."
         elif [ "$socket_gid" != "$(setting DOCKER_GID 999)" ]; then
-            # **A warning rather than a refusal since 2026-09-03**, when the
-            # runner service became `user: "0:0"` so that it could measure. Root
-            # opens the socket whatever groups it is in, so a wrong value no
-            # longer stops anything -- but it is still wrong, and it is what an
-            # installation would need again if the Runner ever went back to
-            # running unprivileged.
+            # **A warning rather than a refusal.** The runner service is
+            # `user: "0:0"` so that it can measure, and root opens the socket
+            # whatever groups it is in, so a wrong value stops nothing -- but it
+            # is still wrong, and it is what the service would need if it ever
+            # ran unprivileged.
             warn "DOCKER_GID is $(setting DOCKER_GID 999) and the daemon's socket is owned by group
        $socket_gid. The Runner runs as root, so it reaches the socket anyway and
        nothing is broken by this. Write DOCKER_GID=$socket_gid."
@@ -119,15 +118,11 @@ if runs_service runner runner; then
        what cannot be done there is reach a verdict at all."
         fi
 
-        # **The driver, and both of them are fine since 2026-09-03.** A cgroup
-        # parent is a path under `cgroupfs` and a slice under `systemd`, and the
-        # Runner knows how to measure under either -- so this refuses only a
-        # daemon that reports neither, which means cgroups are switched off and
-        # nothing can be measured at all.
-        #
-        # It refused `systemd` until then, which was the default on almost every
-        # host this stack is installed on, and the remedy it printed was to edit
-        # the daemon configuration and restart it. That is gone.
+        # **The driver, and both of them are fine.** A cgroup parent is a path
+        # under `cgroupfs` and a slice under `systemd`, and the Runner measures
+        # under either -- so this refuses only a daemon that reports neither,
+        # which means cgroups are switched off and nothing can be measured at
+        # all. No installation has to reconfigure its daemon.
         driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null | tr -d '[:space:]')
         case "$driver" in
             "" | cgroupfs | systemd) ;;

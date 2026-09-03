@@ -28,21 +28,17 @@ From an empty directory to an installation that judges a submission.
   docker info --format '{{.CgroupDriver}}'    # cgroupfs or systemd; both work
   ```
 
-  **Either cgroup driver is fine.** This was the one host requirement an
-  operator was most likely to fail — until 2026-09-03 the Runner needed
-  `cgroupfs`, and `systemd` is the default on virtually every Linux server, so
-  an installation began by editing `/etc/docker/daemon.json` and restarting the
-  daemon. It no longer does. Under `cgroupfs` the Runner makes a cgroup per run;
-  under `systemd`, where cgroups belong to systemd, it keeps one slice for its
-  whole life and reads each run as the change across it.
+  **Either cgroup driver is fine, and neither needs the daemon reconfigured.**
+  Under `cgroupfs` the Runner makes a cgroup per run; under `systemd`, where
+  cgroups belong to systemd, it keeps one slice for its whole life and reads each
+  run as the change across it.
 
   `compose.yaml` supplies everything else: **`/sys/fs/cgroup` mounted writable,
   `cgroup: host`** so that the path the Runner reads is the path the daemon
   resolved against, and **`user: "0:0"`** because that tree's directories are
-  root's. That used to be left to the installation on the grounds that write
-  access to the host's cgroup tree is a decision rather than a default. It is
-  now a default, because the alternative is a stack that does not judge — and it
-  costs write permission on one directory tree, not a capability. The Runner
+  root's. Write access to the host's cgroup tree is a default here because the
+  alternative is a stack that does not judge, and it costs write permission on
+  one directory tree rather than a capability. The Runner
   holds the Docker socket in any case, which is root-equivalent on the host, so
   the uid inside its container was never the boundary; `docs/OPERATIONS.md`
   says what follows from that. Nothing it *starts* gains anything: a job
@@ -161,9 +157,8 @@ down by hand — jobs then fail with `Permission denied (os error 13)` from insi
 the sandbox layer. `preflight.sh` probes both halves, writing as root and
 reading back as 65534, and says which one failed.
 
-*This asked for `chown 65532:65532` until 2026-09-03, when the Runner started
-running as root so that it could measure. That ownership still works and costs
-nothing; it is simply no longer needed.*
+*`chown 65532:65532` also works and costs nothing; the Runner runs as root, so
+it is not needed.*
 
 Two more worth reading before the first start:
 

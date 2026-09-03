@@ -161,10 +161,9 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine stat -c '%g'
 ```
 
 On Docker Desktop that is `0`; on a Linux host it is the `docker` group's id.
-Since the runner service runs as root this cannot be the cause any more — root
-opens the socket whatever groups it is in — but a stack installed before
-2026-09-03, or one whose `compose.yaml` has been edited, can still meet it. If
-it is the cause, the Runner fails at **startup** and never reaches a job.
+The runner service runs as root, which opens the socket whatever groups it is
+in, so this is only a cause where `compose.yaml` has been edited to drop that.
+Where it is, the Runner fails at **startup** and never reaches a job.
 
 **Two: `RUNNER_WORK_DIR` cannot be read by a job container.** The Runner writes
 a submission's files there as root; every job container mounts the directory
@@ -182,8 +181,7 @@ which satisfies both. `preflight.sh` probes both halves — writing as root, the
 reading back as 65534.
 
 Measured 2026-09-01 on a stack whose socket was reachable and whose every
-submission still failed. The ownership it needed then was `65532`, which is what
-the Runner ran as until 2026-09-03.
+submission still failed.
 
 ## Every job fails, and the Runner said something about cgroups
 
@@ -204,11 +202,9 @@ up` starts anything:
 | a cgroup driver it knows neither of | `docker info --format '{{.CgroupDriver}}'` must print `cgroupfs` or `systemd`. Anything else means cgroups are off |
 | it cannot read the hierarchy | `compose.yaml` has been edited: the `/sys/fs/cgroup` mount, `cgroup: host` or `user: "0:0"` on the runner service is missing |
 
-**Both cgroup drivers work and neither needs the daemon reconfigured.** Until
-2026-09-03 the Runner required `cgroupfs`, and `systemd` is the default almost
-everywhere, so an installation of that vintage may still carry a
-`native.cgroupdriver=cgroupfs` line in `/etc/docker/daemon.json`. It does no
-harm; it is simply no longer needed.
+**Both cgroup drivers work and neither needs the daemon reconfigured.** A
+`native.cgroupdriver=cgroupfs` line in `/etc/docker/daemon.json` does no harm
+and is not needed.
 
 ## The verdicts are right but no memory is reported
 
