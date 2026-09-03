@@ -55,7 +55,8 @@ From an empty directory to an installation that judges a submission.
   the **peak-memory number**. Measured on all four combinations, 2026-09-03.
 
   **A `systemd` host can lose that number for a second reason, and it is still
-  not the verdict.** The reset of `memory.peak` arrived in **Linux 6.8**. On an
+  not the verdict.** The reset of `memory.peak` arrived in **Linux 6.12** — which
+  excludes Ubuntu 24.04, shipping 6.8, and includes Debian 13. On an
   older kernel the Runner judges exactly as it should — the verdict is processor
   time — and says at `ERROR` on every start that the number beside it will be
   absent. `cgroupfs` reports it on any kernel from 5.19.
