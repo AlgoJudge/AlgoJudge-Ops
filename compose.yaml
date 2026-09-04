@@ -451,9 +451,17 @@ services:
 
     # **No health check is possible** — `distroless/static`, no shell, no port —
     # so `up --wait` calls it ready while it may still be failing to sign in. Its
-    # log is the only instrument. No `stop_grace_period` either: it handles no
-    # SIGTERM, and what dies with it is the set of submissions the archive has
-    # not answered for. `docs/OPERATIONS.md` says what that costs.
+    # log is the only instrument.
+    #
+    # **Longer than the sandboxing Runner's, and for a different reason.** That
+    # one holds a single job; this one holds up to `AJ_External__MaxPending`
+    # submissions the archive has not answered for, and on `SIGTERM` it hands
+    # every one of them back to the queue — one call each, over the network,
+    # against a Server that may be busy. Cut it short and the ones it did not
+    # reach wait out their leases instead. What is lost either way is the answers
+    # still coming from the archive, which is a duplicate submission on somebody
+    # else's service; `docs/OPERATIONS.md` says what that costs.
+    stop_grace_period: ${EXTERNAL_RUNNER_STOP_GRACE:-60s}
 
 # ── Networks ──────────────────────────────────────────────────────────────────
 #

@@ -31,6 +31,13 @@ received it, and what is repeated is the sending rather than the judging. The
 External Runner keeps the set it is waiting on in memory only, so a restart
 during a window loses it and every job in it is sent again.
 
+**Stopping it politely does not avoid that, and is still worth doing.** On
+`SIGTERM` it hands every job it is holding back to the queue at once, so the
+resend starts immediately rather than after each lease expires — up to twenty
+participants who would otherwise wait ten minutes for a Runner that is already
+gone. The duplicate on the archive is unchanged: the answer that was coming has
+nowhere to land either way.
+
 An external job may legitimately be held for fifteen minutes, and
 `Maintenance:ForceAfterSeconds` is 300, so the two do not meet on their own.
 Before a window that will restart that container: raise `ForceAfterSeconds` past
