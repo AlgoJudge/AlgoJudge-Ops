@@ -16,6 +16,24 @@
 
 name: algojudge
 
+# **A bound on the log, because the default has none.** Docker's `json-file`
+# driver writes until the disk is full: a contest's worth of judging is tens of
+# thousands of lines per Runner, and nothing here or in `scripts/gc.sh` rotates
+# it. The failure is the worst kind — the installation stops because the volume
+# it shares with PostgreSQL is full, and the reason is in the file that filled
+# it.
+#
+# Ten megabytes times three is enough to hold what an operator would actually
+# read after something went wrong, and small enough that eight services cannot
+# add up to a problem. `docker compose logs` reads only what is kept, so a
+# diagnosis wants collecting before the window closes — `docs/OPERATIONS.md`
+# says so beside the commands.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: "${LOG_MAX_FILES:-3}"
+
 services:
 
   # ── The database ────────────────────────────────────────────────────────────
@@ -23,6 +41,7 @@ services:
   postgres:
     profiles: ["data"]
     image: postgres:${POSTGRES_TAG:-18}
+    logging: *logging
     restart: unless-stopped
 
     # **The volume is one level above PGDATA and that is not a typo.**
@@ -58,6 +77,7 @@ services:
   server:
     profiles: ["app", "server"]
     image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-server:${SERVER_TAG:-0}
+    logging: *logging
     restart: unless-stopped
 
     depends_on:
@@ -146,6 +166,7 @@ services:
   client:
     profiles: ["app", "client"]
     image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-client:${CLIENT_TAG:-0}
+    logging: *logging
     restart: unless-stopped
 
     environment:
@@ -170,6 +191,7 @@ services:
   nginx:
     profiles: ["edge"]
     image: nginx:${NGINX_TAG:-1.27-alpine}
+    logging: *logging
     restart: unless-stopped
 
     depends_on:
@@ -214,6 +236,7 @@ services:
   runner-1: &runner
     profiles: ["runner"]
     image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-runner:${RUNNER_TAG:-0}
+    logging: *logging
     restart: unless-stopped
 
     # **No `depends_on` on the Server, deliberately.** This profile has to start
@@ -403,6 +426,7 @@ services:
   external-runner:
     profiles: ["external-runner"]
     image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-external-runner:${EXTERNAL_RUNNER_TAG:-0}
+    logging: *logging
     restart: unless-stopped
 
     # No `depends_on`: this profile must start where there is no `server`
