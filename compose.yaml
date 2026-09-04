@@ -103,6 +103,16 @@ services:
       # world gets seeded.
       DOTNET_ENVIRONMENT: Production
 
+      # **Warning in production, and this is how to see more.** The image ships
+      # `Warning` because every SQL statement EF Core runs is emitted at
+      # `Information` — measured at 91-98% of everything a judging stack writes.
+      # The Runners have `RUNNER_LOG` for the same job; this is the Server's.
+      #
+      # `Information` brings the SQL back and is what to set while diagnosing
+      # something and nothing else. Raise the log's own bound with it if the
+      # window matters: at `Information` ten megabytes is minutes, not days.
+      AJ_Logging__LogLevel__Default: ${SERVER_LOG:-Warning}
+
       AJ_ConnectionStrings__DbConnectionString: >-
         Host=postgres;Database=${POSTGRES_DB:-algojudge};Username=${POSTGRES_USER:-algojudge};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — see .env.example}
 
