@@ -64,15 +64,15 @@ jobs:
               }
               echo "  $1 -> $actual"
           }
-          check "edge,app,data,runner" "client nginx postgres runner server"
+          check "edge,app,data,runner" "client nginx postgres runner-1 runner-2 runner-3 runner-4 server"
           check "edge,app,data"        "client nginx postgres server"
-          check "runner"               "runner"
+          check "runner"               "runner-1 runner-2 runner-3 runner-4"
           check "app,data"             "client postgres server"
 
           # The External Runner is an addition to any arrangement, so the four
           # above must be unchanged by it, and it must stand alone on a host of
           # its own. The second check catches a `depends_on` added in passing.
-          check "edge,app,data,runner,external-runner"                 "client external-runner nginx postgres runner server"
+          check "edge,app,data,runner,external-runner"                 "client external-runner nginx postgres runner-1 runner-2 runner-3 runner-4 server"
           check "external-runner"      "external-runner"
 
       - name: nginx accepts the configuration
