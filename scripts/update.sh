@@ -34,7 +34,7 @@ LOCK_FILE="$ROOT/state/current.lock"
 # line. This is what a rollback restores.
 #
 # **`RepoDigests`, not `Config.Image`.** The container's `Config.Image` is the
-# *reference* it was created from — `…/algojudge-server:1` — and writing that
+# *reference* it was created from — `…/algojudge-server:0` — and writing that
 # down produces a lock file whose rollback restores whatever that moving tag
 # points at **now**, which is precisely the image being rolled back from.
 #
@@ -77,7 +77,7 @@ log "pulling images (no downtime yet)"
 $dry_run || compose pull --quiet
 
 # **Compared as image ids, because a moving tag is the normal case.**
-# `SERVER_TAG=1` points at a different image after every release, so "is the tag
+# `SERVER_TAG=0` points at a different image after every release, so "is the tag
 # the same" would answer yes for ever.
 #
 # **Asked of the containers, not of `compose config --images`.** That command

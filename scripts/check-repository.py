@@ -173,6 +173,38 @@ def one_postgres_major(problems):
         )
 
 
+def the_product_tags_agree(problems):
+    """Every product image tag says the same thing in both files.
+
+    **This is the drift that shipped.** `compose.yaml` and `.env.example` both
+    default the four product images, and both were written `1` while the prose
+    five lines above the values in `.env.example` explained that a `v0.4.2`
+    release publishes `0.4.2`, `0.4`, `0` and `latest`. At 0.1.0 there is no
+    `1` tag at all, so a first installation's `compose pull` would have failed
+    on every product image with `manifest unknown`.
+
+    `POSTGRES_TAG` had this check and the four that move with our own releases
+    did not, which is the wrong way round: theirs is somebody else's version
+    and moves rarely, ours moves every release.
+    """
+    compose = read("compose.yaml")
+    example = read(".env.example")
+    for name in ("SERVER_TAG", "CLIENT_TAG", "RUNNER_TAG", "EXTERNAL_RUNNER_TAG"):
+        here = re.search(r"\$\{%s:-([^}]*)\}" % name, compose)
+        there = re.search(r"^%s=(.*)$" % name, example, re.MULTILINE)
+        if not here:
+            problems.append(f"compose.yaml never expands {name}.")
+            continue
+        if not there:
+            problems.append(f".env.example has no {name} line.")
+            continue
+        if here.group(1) != there.group(1).strip():
+            problems.append(
+                f"compose.yaml defaults {name} to {here.group(1)!r} and "
+                f".env.example says {there.group(1).strip()!r}."
+            )
+
+
 def the_volume_is_above_pgdata(problems):
     """The PostgreSQL volume is mounted where 18 keeps its data.
 
@@ -299,6 +331,7 @@ CHECKS = (
     env_example_and_compose_agree,
     secrets_have_no_defaults,
     one_postgres_major,
+    the_product_tags_agree,
     the_volume_is_above_pgdata,
     the_api_is_not_intercepted,
     the_health_path_is_versioned,

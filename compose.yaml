@@ -57,7 +57,7 @@ services:
 
   server:
     profiles: ["app", "server"]
-    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-server:${SERVER_TAG:-1}
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-server:${SERVER_TAG:-0}
     restart: unless-stopped
 
     depends_on:
@@ -145,7 +145,7 @@ services:
 
   client:
     profiles: ["app", "client"]
-    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-client:${CLIENT_TAG:-1}
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-client:${CLIENT_TAG:-0}
     restart: unless-stopped
 
     environment:
@@ -213,7 +213,7 @@ services:
 
   runner-1: &runner
     profiles: ["runner"]
-    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-runner:${RUNNER_TAG:-1}
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-runner:${RUNNER_TAG:-0}
     restart: unless-stopped
 
     # **No `depends_on` on the Server, deliberately.** This profile has to start
@@ -238,10 +238,10 @@ services:
       # the Runner looks for `algojudge/lang-*:local` — images the development
       # flow builds and a fresh host has never heard of. A submission then fails
       # to be judged with nothing obviously wrong.
-      AJ_Sandbox__Image__Gcc: ${REGISTRY:-ghcr.io/algojudge}/lang-gcc:${RUNNER_TAG:-1}
-      AJ_Sandbox__Image__Clang: ${REGISTRY:-ghcr.io/algojudge}/lang-clang:${RUNNER_TAG:-1}
-      AJ_Sandbox__Image__Python: ${REGISTRY:-ghcr.io/algojudge}/lang-python:${RUNNER_TAG:-1}
-      AJ_Sandbox__Image__Pypy: ${REGISTRY:-ghcr.io/algojudge}/lang-pypy:${RUNNER_TAG:-1}
+      AJ_Sandbox__Image__Gcc: ${REGISTRY:-ghcr.io/algojudge}/lang-gcc:${RUNNER_TAG:-0}
+      AJ_Sandbox__Image__Clang: ${REGISTRY:-ghcr.io/algojudge}/lang-clang:${RUNNER_TAG:-0}
+      AJ_Sandbox__Image__Python: ${REGISTRY:-ghcr.io/algojudge}/lang-python:${RUNNER_TAG:-0}
+      AJ_Sandbox__Image__Pypy: ${REGISTRY:-ghcr.io/algojudge}/lang-pypy:${RUNNER_TAG:-0}
 
       AJ_Work__Path: /var/lib/algojudge-runner/work
 
@@ -402,7 +402,7 @@ services:
 
   external-runner:
     profiles: ["external-runner"]
-    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-external-runner:${EXTERNAL_RUNNER_TAG:-1}
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-external-runner:${EXTERNAL_RUNNER_TAG:-0}
     restart: unless-stopped
 
     # No `depends_on`: this profile must start where there is no `server`

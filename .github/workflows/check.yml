@@ -94,7 +94,7 @@ jobs:
 
   # **The stack is not brought up and asserted against here.** That check needs
   # published images, and nothing has been pushed to ghcr.io/algojudge: no
-  # repository carries a `v*` tag, so `algojudge-server:1` resolves to nothing.
+  # repository carries a `v*` tag, so `algojudge-server:0` resolves to nothing.
   # It lands with the first release, together with the one-time flip of the
   # seven packages to public. Until then the stack is verified by hand against
   # locally built images — `docs/OPERATIONS.md` says how.

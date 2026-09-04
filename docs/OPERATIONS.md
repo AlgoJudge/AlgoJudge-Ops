@@ -454,15 +454,15 @@ Until a release exists, `ghcr.io/algojudge/*` is empty. To run this stack,
 build the product repositories and tag them as published:
 
 ```bash
-docker build -f AlgoJudge-Server/AlgoJudge.Server/Dockerfile -t ghcr.io/algojudge/algojudge-server:1 AlgoJudge-Server
-docker build -t ghcr.io/algojudge/algojudge-client:1 AlgoJudge-Client
-docker build -t ghcr.io/algojudge/algojudge-runner:1 AlgoJudge-Runner
+docker build -f AlgoJudge-Server/AlgoJudge.Server/Dockerfile -t ghcr.io/algojudge/algojudge-server:0 AlgoJudge-Server
+docker build -t ghcr.io/algojudge/algojudge-client:0 AlgoJudge-Client
+docker build -t ghcr.io/algojudge/algojudge-runner:0 AlgoJudge-Runner
 for lang in gcc clang python pypy; do
-    docker build -t "ghcr.io/algojudge/lang-$lang:1" "AlgoJudge-Runner/images/$lang"
+    docker build -t "ghcr.io/algojudge/lang-$lang:0" "AlgoJudge-Runner/images/$lang"
 done
 
 # Only for the `external-runner` profile.
-docker build -t ghcr.io/algojudge/algojudge-external-runner:1 AlgoJudge-External-Runner
+docker build -t ghcr.io/algojudge/algojudge-external-runner:0 AlgoJudge-External-Runner
 ```
 
 **`-f` is relative to where you are standing, not to the context.** Writing it
@@ -471,7 +471,7 @@ AlgoJudge.Server: no such file or directory`. It is the only one of the eight
 builds with a path in it, which is why it is the one worth checking.
 
 **Rebuild rather than reuse a tag you already have.** These images are pinned by
-a moving tag, so a stale local `:1` is silently whatever you built last month —
+a moving tag, so a stale local `:0` is silently whatever you built last month —
 `docker image inspect --format '{{.Created}}'` before trusting one.
 
 An image built this way carries none of the `org.opencontainers.image.*` labels
