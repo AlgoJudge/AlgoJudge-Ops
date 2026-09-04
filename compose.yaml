@@ -78,6 +78,19 @@ services:
     profiles: ["app", "server"]
     image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-server:${SERVER_TAG:-0}
     logging: *logging
+
+    # **Long enough to answer the claims it is holding.** Since 2026-09-04 a
+    # Runner may ask the Server to hold a `claim` open — twenty-five seconds by
+    # default, up to three hundred — and Compose's own default gives a container
+    # ten seconds before SIGKILL. Every `docker compose up -d` with a new image
+    # therefore killed the process with those requests parked in the wait.
+    #
+    # Nothing was lost: a waiting claim holds no transaction and no lease. What
+    # it cost was a burst of reset connections in every Runner's log on every
+    # update, where a 204 would have been the honest answer. Forty seconds
+    # covers the shipped wait with room; an installation that raised
+    # `AJ_Poll__WaitSeconds` should raise this beside it.
+    stop_grace_period: ${SERVER_STOP_GRACE:-40s}
     restart: unless-stopped
 
     depends_on:
