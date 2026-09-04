@@ -311,10 +311,13 @@ services:
     group_add:
       - ${DOCKER_GID:-999}
 
-    # **Short, because it buys nothing and is paid on every stop.** The Runner
-    # ignores `SIGTERM` and is killed anyway, so this is only how long `down`,
-    # `stop` and `update.sh` wait. The job returns to the queue when its lease
-    # expires; a clean drain is `scripts/maintenance.sh` on the Server first.
+    # **Long enough for the Runner to say what it is doing.** On `SIGTERM` it
+    # stops the evaluation in hand, gives the job back so another Runner can
+    # take it at once, and clears the containers it had started. That is a
+    # handful of HTTP calls and a few container removals -- seconds, not
+    # minutes -- but a grace shorter than they take is a kill, and a killed
+    # Runner leaves the job to its lease, which is ten minutes of a
+    # participant's time.
     stop_grace_period: ${RUNNER_STOP_GRACE:-30s}
 
     # **Which processors this Runner may use, and it is a correctness setting
@@ -448,9 +451,17 @@ services:
 
     # **No health check is possible** — `distroless/static`, no shell, no port —
     # so `up --wait` calls it ready while it may still be failing to sign in. Its
-    # log is the only instrument. No `stop_grace_period` either: it handles no
-    # SIGTERM, and what dies with it is the set of submissions the archive has
-    # not answered for. `docs/OPERATIONS.md` says what that costs.
+    # log is the only instrument.
+    #
+    # **Longer than the sandboxing Runner's, and for a different reason.** That
+    # one holds a single job; this one holds up to `AJ_External__MaxPending`
+    # submissions the archive has not answered for, and on `SIGTERM` it hands
+    # every one of them back to the queue — one call each, over the network,
+    # against a Server that may be busy. Cut it short and the ones it did not
+    # reach wait out their leases instead. What is lost either way is the answers
+    # still coming from the archive, which is a duplicate submission on somebody
+    # else's service; `docs/OPERATIONS.md` says what that costs.
+    stop_grace_period: ${EXTERNAL_RUNNER_STOP_GRACE:-60s}
 
 # ── Networks ──────────────────────────────────────────────────────────────────
 #
