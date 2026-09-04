@@ -66,14 +66,16 @@ From an empty directory to an installation that judges a submission.
 - **Disk for backups**, ideally on a **different filesystem** from the
   PostgreSQL volume. On one filesystem no reserve setting can guarantee that a
   backup will not starve the database it is backing up.
-- **A bounded container log driver.** The default is an unbounded JSON file and
-  it is the commonest way one of these hosts fills its disk:
+- ~~**A bounded container log driver.**~~ **No longer a host requirement**, and
+  it used to be the commonest way one of these hosts filled its disk. Docker's
+  default is an unbounded JSON file, so this asked every operator to edit
+  `/etc/docker/daemon.json` and restart the daemon before installing anything.
 
-  ```json
-  { "log-driver": "json-file", "log-opts": { "max-size": "50m", "max-file": "5" } }
-  ```
-
-  in `/etc/docker/daemon.json`, then restart the daemon.
+  `compose.yaml` now sets `logging:` on every service itself — `LOG_MAX_SIZE`
+  and `LOG_MAX_FILES` in `.env` — which overrides the daemon's default for this
+  stack and needs nothing from the host. **Setting it on the daemon is still a
+  good idea** for whatever else runs there; it is simply not this
+  installation's business any more, and not a step to do first.
 
 ## One time, by hand: the packages must be public
 
