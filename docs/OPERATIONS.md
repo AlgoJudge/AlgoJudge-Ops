@@ -258,6 +258,22 @@ something you recognise.
 The outage is steps 5 to 7 — measured at about eighteen seconds on a small
 installation, most of it the drain.
 
+**Update every host in the same window, and the Runner images with the Server.**
+The Server and the Runners speak a protocol that changes between versions, and
+the tags this stack ships are moving majors pulled independently — so nothing
+stops `update.sh` from taking a new Server against a Runner image from last
+month. A Runner too old for the Server it registers against is refused, and a
+refused registration is not a retry: the process exits and `restart:
+unless-stopped` turns it into a loop that `preflight.sh` cannot see, because
+nothing is wrong with the configuration. `docs/TROUBLESHOOTING.md` under *the
+external Runner restarts every few seconds* has the log line.
+
+This matters most on the arrangement `docs/INSTALL.md` recommends for a public
+installation, where the Runners are on hosts of their own and reach the Server
+over `SERVER_URL`. Those hosts have their own `update.sh`, and a host that is not
+updated in step goes quiet on its **next restart** rather than immediately —
+which is the shape of failure nobody notices until a contest.
+
 **Versions are tags in `.env` and digests in `state/current.lock`.** The tag says
 what was asked for; the digest says what is running, and is what a rollback
 restores. Digests cannot live in this repository — it is a product many
@@ -289,9 +305,24 @@ when its lease expires, and the delivery is not counted against the
 submission — an operator restarting a fleet does not spend a participant's
 attempts.
 
+**Three times, and then it does.** A give-back is free for the first three, as
+is a delivery nobody was ever heard from about; past that each costs one of the
+five, because from here a Runner crash-looping under a supervisor and an
+operator restarting a fleet look exactly alike and only the count separates
+them.
+
 The work already done on that submission is thrown away and redone by whoever
 takes it next. That is what happens whenever a Runner stops mid-job; what
 changes is that it happens in seconds instead of ten minutes.
+
+**"Seconds" became reliable on 2026-09-04, and was optimistic before it.** Three
+waits used to sleep straight through a stop: the retry carrying an answer already
+computed, bounded by the lease at ten minutes; the wait on a Server that is
+deliberately down, which honours the operator's own `Retry-After` and so had no
+bound at all; and the loop a Runner re-enters when the Server forgets its token.
+Any of the three ran past this grace, and a killed Runner is not a slower
+release — it is none, so the job waited out its lease and the paragraph above was
+untrue in exactly the case it describes.
 
 **So `stop_grace_period` is what those calls need**, and 30s is generous for a
 handful of HTTP requests and a few container removals. **Shortening it below
@@ -315,10 +346,18 @@ A clean drain is still `maintenance.sh on --wait-closed` on the **Server**
 first, which `update.sh` does — it stops new work reaching a Runner at all,
 which is tidier than every Runner handing back what it had just been given.
 
-**The External Runner reaches the same conclusion by a different route.** It
-handles no `SIGTERM` either, so it has no grace period at all — one would buy
-nothing. What it loses when it dies is not an evaluation in progress but a list
-of submissions an archive has not answered for yet, and each of those is sent to
+**The External Runner reaches the same conclusion by a different route, and it
+does handle `SIGTERM`.** This paragraph said it did not, and that it had no grace
+period because one would buy nothing; both were already wrong when
+`EXTERNAL_RUNNER_STOP_GRACE` was added — sixty seconds, twice the sandboxing
+Runner's, because it hands back up to `AJ_External__MaxPending` jobs one call
+each. Since 2026-09-04 a job the Server hands over at the very instant of the
+stop is released rather than sent to the archive and then given back, so what a
+grace buys here has grown rather than vanished. **Do not delete
+`EXTERNAL_RUNNER_STOP_GRACE` on the strength of what this used to say.**
+
+What it loses when it dies is not an evaluation in progress but a list of
+submissions an archive has not answered for yet, and each of those is sent to
 that archive a second time when the job is requeued. The drain is the answer
 there too, and the paragraph under *Maintenance* is the one to read first.
 
