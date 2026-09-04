@@ -127,8 +127,63 @@ The refusal names the setting: `AJ_External__Username is required`. Fill both
 values in, and note that `preflight.sh` refuses ahead of this when the profile is
 active, so `make up` never gets that far.
 
+**A second cause, with the same symptom and a different fix: the image is older
+than the Server.** The log line names a registration rather than a setting —
+
+```
+the Server refused the registration: the Server refused with 403: runner.nonce.unknown
+```
+
+— and it appears only from the **second** start onwards, because the identity
+volume is what makes the Server recognise the key. A Server that requires a
+signed re-registration and an image that predates that requirement cannot agree,
+the refusal is not one a Runner retries, and `preflight.sh` cannot see it because
+the configuration is fine. Pull both images from the same release rather than
+letting the moving tags drift; `docs/OPERATIONS.md` under *Update* says why they
+have to move together. The sandboxing Runner fails the same way, and its own
+entry below says so.
+
 **A password with a leading or trailing space is not the cause.** It is passed
 through exactly as written, deliberately — trimming it broke a sign-in once.
+
+## A Runner refuses to start and names a poll or a lease setting
+
+The same loop as above, from a different cause: a Runner checks its intervals
+against one another before it does anything, and `restart: unless-stopped` turns
+a refusal into a restart every few seconds. Three of these are worth knowing,
+and **none of them can be reached with the values this stack ships** — they are
+what a `.env` of your own can produce.
+
+```bash
+docker compose logs runner | tail -5
+docker compose logs external-runner | tail -5
+```
+
+- **`the Server refused the registration: … 403: runner.nonce.unknown`.** Not a
+  setting at all: this image is older than the Server it is registering against.
+  See the external Runner's entry above — the cause and the fix are the same for
+  both Runners, and neither is a configuration error.
+- **`AJ_Poll__WaitSeconds is N, above the 300 seconds the Server will hold a
+  claim open.`** Three hundred is the Server's own ceiling. Asking for more is
+  worse than being ignored: a Runner tells a held claim from an immediate answer
+  by how long it took, so it would read every held claim as an empty one and
+  sleep its backoff after each. Lower it. If the point was to poll less often,
+  the setting for that is `AJ_Poll__MaxSeconds`.
+- **`AJ_Runner__ProblemTypes names no problem type.`** A lone comma, or a
+  trailing one from a paste, leaves the list empty — and an empty list matches
+  no problem, so the Runner would register, be approved, heartbeat, show as
+  connected and be handed nothing. Leave the variable unset for the default.
+  This one is the sandboxing Runner's only: on the external Runner an empty
+  value deliberately means the judge's own type.
+- **`… make a cycle of N seconds, which does not fit four times inside
+  AJ_Lease__RequestSeconds.`** The external Runner renews the leases it holds
+  once per cycle, and a cycle is the judge's own interval **plus** the claim the
+  Server holds open. A lease that could expire between two renewals is one the
+  Server reclaims while a submission is still live at the archive, and the next
+  Runner sends it again. Lower either interval, or raise the lease.
+
+This stack does not offer the four external intervals in `.env.example` for
+exactly this reason; the image's defaults satisfy all of it.
 
 ## The archive says the account does not exist
 

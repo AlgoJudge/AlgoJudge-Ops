@@ -89,7 +89,9 @@ services:
     # it cost was a burst of reset connections in every Runner's log on every
     # update, where a 204 would have been the honest answer. Forty seconds
     # covers the shipped wait with room; an installation that raised
-    # `AJ_Poll__WaitSeconds` should raise this beside it.
+    # `AJ_Poll__WaitSeconds` should raise this beside it — to at most three
+    # hundred, which is this Server's ceiling and which a Runner asking past
+    # refuses to start against.
     stop_grace_period: ${SERVER_STOP_GRACE:-40s}
     restart: unless-stopped
 
@@ -481,9 +483,15 @@ services:
 
       RUST_LOG: ${EXTERNAL_RUNNER_LOG:-info}
 
-      # The lease and the four poll intervals check one another at startup and
-      # the image's defaults satisfy all of it, so they are not offered here.
-      # Moving them costs a solution submitted to the archive twice.
+      # The lease, the four poll intervals **and `AJ_Poll__WaitSeconds`** check
+      # one another at startup, and the image's defaults satisfy all of it, so
+      # they are not offered here. Moving them costs a solution submitted to the
+      # archive twice.
+      #
+      # The wait is in that arithmetic since 2026-09-04: a lease is renewed once
+      # per loop and the claim the Server holds open is inside the same loop, so
+      # the cycle is the judge's interval *plus* the wait. A value accepted
+      # before that day can be refused now.
 
     volumes:
       # The identity key. Losing it costs a re-registration and an approval.

@@ -49,6 +49,25 @@ if runs_service runner-1 runner; then
        against nothing. Write an absolute path."
         fi
 
+        # **A list of separators is not a list of problem types.** Since
+        # 2026-09-04 the Runner refuses to start on one, and `restart:
+        # unless-stopped` turns that into a loop nothing here would otherwise
+        # explain — the value looks set, and every other check passes.
+        #
+        # An empty value is fine and deliberately not reported: `compose.yaml`
+        # substitutes the default for it. What is refused is a value that is
+        # present and names nothing, which is what a stray or trailing comma
+        # produces.
+        if [ -n "${RUNNER_PROBLEM_TYPES:-}" ]; then
+            named=$(printf '%s' "$RUNNER_PROBLEM_TYPES" | tr ',' '
+'                 | tr -d '[:space:]' | grep -c . || true)
+            if [ "$named" -eq 0 ]; then
+                report "RUNNER_PROBLEM_TYPES is '$RUNNER_PROBLEM_TYPES', which names no problem
+       type. The Runner refuses to start on that, and an empty list would match
+       no problem anyway. Leave it unset for the default."
+            fi
+        fi
+
         # **The group the socket actually has, not the one somebody guessed.**
         # The Runner image runs as `nonroot`, so it reaches the daemon only
         # through `group_add` — and a wrong number produces `Permission denied
