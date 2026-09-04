@@ -222,14 +222,66 @@ answers on the Server's own loopback interface, and a request through nginx —
 or through the published `127.0.0.1:8080` — arrives as the bridge gateway and
 gets a 404. That is measured behaviour, not a guess.
 
-## 5. Approve the Runner
+## How many Runners
+
+**Four, on a host with eight physical cores** — which is what the `runner`
+profile starts and what `.env.example` is written for. One Runner judges one
+submission at a time, so the count is how many submissions are judged at once,
+and the other four cores are for the Server, the database, the daemon and the
+operating system.
+
+**More Runners than physical cores does not judge faster, and it stops judging
+accurately.** Measured 2026-09-03 on an eight-core host: twelve Runners against
+a hundred and fifty submissions returned **fifteen of them as `Time limit
+exceeded` when they were inside their limits**, including solutions known to be
+correct. Two things cause it and both come from processors being oversubscribed:
+a program that is not scheduled still runs out of wall clock, and a program
+sharing a core with another spends more processor time on the same work.
+
+So the ceiling is a rule about correctness:
+
+| Physical cores | Runners |
+|---|---|
+| 4 | 2 |
+| 8 | **4** |
+| 16 | 8 |
+
+`lscpu` says how many there are — *Core(s) per socket* times *Socket(s)*, which
+is **not** the CPU count when a core carries two threads.
+
+To run fewer, remove the services you do not want from `compose.yaml` and leave
+their `RUNNER_*_CPUSET` unset. To pin them, see `.env.example`, which explains
+how to read a core's threads off the machine rather than guessing them.
+
+### What a submission costs, and why some problems cost twice as much
+
+**A Runner's time goes on starting containers, not on running programs.** Each
+test runs in a container of its own — that is what makes the isolation worth
+having — and starting one costs more processor time than most solutions spend
+in it. A problem with 148 tests is 148 container starts for every submission,
+which is why the count of tests, and not the difficulty, decides how long a
+submission takes.
+
+**A problem whose answers are judged by a program is two containers per test**,
+not one: the submission runs, then the package's own checker runs beside it to
+say whether the answer is right. On such a problem a Runner gets through about
+half as many submissions in the same time. Any problem type that has to run a
+second program alongside the submission has the same shape.
+
+Nothing here needs configuring. It is worth knowing because two installations
+with the same hardware and the same number of Runners can differ by a factor of
+two in how fast a contest is judged, and the difference is in the problems.
+
+## 5. Approve the Runners
 
 **A new Runner registers and then waits.** It is not a fault and there is no
 timeout; nothing is judged until an administrator approves it, which is what
 stops somebody attaching a machine of their own to your installation.
 
-In the panel: **Runners**, and approve the one that appeared. Its logs say
-`waiting: this Runner has not been approved yet` until you do.
+In the panel: **Runners**, and approve each of the four that appeared. Their
+logs say `waiting: this Runner has not been approved yet` until you do, and an
+unapproved Runner is simply idle — the others carry the queue, so a forgotten
+approval shows up as a slow installation rather than as an error.
 
 Afterwards, submit something and watch it get a verdict. Until that has happened
 once, the installation is not known to work.
@@ -318,13 +370,22 @@ clones this repository and runs `COMPOSE_PROFILES=runner` with
 
 ```ini
 SERVER_URL=https://your.domain
-RUNNER_NAME=runner-lab-a       # different on every host
+RUNNER_NAME_PREFIX=lab-a       # different on every host
 RUNNER_WORK_DIR=/srv/algojudge/runner-work
+RUNNER_1_CPUSET=0,1            # one Runner per physical core
+RUNNER_2_CPUSET=2,3
+RUNNER_3_CPUSET=4,5
+RUNNER_4_CPUSET=6,7
 ```
+
+**The profile starts four Runners**, named `lab-a-1` to `lab-a-4` here. The
+prefix has to differ per host, or two machines' Runners appear in the panel
+under one set of names. On a host with fewer than eight physical cores, run
+fewer: see *How many Runners* above.
 
 The Runner opens every connection itself — it needs no inbound port and works
 from behind a domestic router. Each one registers separately and needs its own
-approval.
+approval, so a four-Runner host is four approvals.
 
 **This is the recommended arrangement for a public installation.** In T1 the
 Runner sits on the same host as the database, and access to the Docker socket is
