@@ -275,15 +275,22 @@ since.
 
 ### The Runner during an update
 
-**The Runner does not handle `SIGTERM` — it ignores it.** Measured 2026-09-01:
-`docker stop -t 60` waited the full sixty seconds and then killed it, exit 137.
-It is killed, and its job goes back on the queue when the lease expires.
+**On `SIGTERM` the Runner gives its job back.** It stops the evaluation it is
+running, tells the Server the job is free, clears the containers it had started
+and exits. The job is claimable by another Runner **that instant** rather than
+when its lease expires, and the delivery is not counted against the
+submission — an operator restarting a fleet does not spend a participant's
+attempts.
 
-**So `stop_grace_period` is a cost, not a courtesy**, and it is paid on every
-`down`, every `stop` and every update. It is **30s**, and nothing is lost by
-that — the job returns to the queue whichever second the Runner died in. At the
-Compose default of 300s a `docker compose down` spends five minutes in silence:
-measured on this stack, **302 s against 32 s**.
+The work already done on that submission is thrown away and redone by whoever
+takes it next. That is what happens whenever a Runner stops mid-job; what
+changes is that it happens in seconds instead of ten minutes.
+
+**So `stop_grace_period` is what those calls need**, and 30s is generous for a
+handful of HTTP requests and a few container removals. **Shortening it below
+what they take turns a stop back into a kill**, and a killed Runner leaves its
+job to the lease. At the Compose default of 300s a `docker compose down` spends
+five minutes in silence instead: measured on this stack, **302 s against 32 s**.
 
 **Two things stop that change reaching an installation that already exists**,
 and both are worth knowing before you conclude it did not work:
@@ -297,8 +304,9 @@ and both are worth knowing before you conclude it did not work:
   carries `RUNNER_STOP_GRACE=300s` in its own `.env`, and that is still what it
   gets. Change it there.
 
-A clean drain is `maintenance.sh on --wait-closed` on the **Server** first, which
-`update.sh` does. Never `docker stop` on a Runner as a way of being careful.
+A clean drain is still `maintenance.sh on --wait-closed` on the **Server**
+first, which `update.sh` does — it stops new work reaching a Runner at all,
+which is tidier than every Runner handing back what it had just been given.
 
 **The External Runner reaches the same conclusion by a different route.** It
 handles no `SIGTERM` either, so it has no grace period at all — one would buy

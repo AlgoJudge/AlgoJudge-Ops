@@ -311,10 +311,13 @@ services:
     group_add:
       - ${DOCKER_GID:-999}
 
-    # **Short, because it buys nothing and is paid on every stop.** The Runner
-    # ignores `SIGTERM` and is killed anyway, so this is only how long `down`,
-    # `stop` and `update.sh` wait. The job returns to the queue when its lease
-    # expires; a clean drain is `scripts/maintenance.sh` on the Server first.
+    # **Long enough for the Runner to say what it is doing.** On `SIGTERM` it
+    # stops the evaluation in hand, gives the job back so another Runner can
+    # take it at once, and clears the containers it had started. That is a
+    # handful of HTTP calls and a few container removals -- seconds, not
+    # minutes -- but a grace shorter than they take is a kill, and a killed
+    # Runner leaves the job to its lease, which is ten minutes of a
+    # participant's time.
     stop_grace_period: ${RUNNER_STOP_GRACE:-30s}
 
     # **Which processors this Runner may use, and it is a correctness setting
