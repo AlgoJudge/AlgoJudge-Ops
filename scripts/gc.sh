@@ -75,9 +75,10 @@ fi
 # ── Logs ────────────────────────────────────────────────────────────────────
 #
 # These scripts' own logs, wherever the crontab points them. Container logs are
-# Docker's business and are bounded by the daemon's log driver — `docs/INSTALL.md`
-# says to set that, because the default is an unbounded JSON file and it is the
-# most common way one of these hosts fills its disk.
+# not this loop's business and never were: `compose.yaml` bounds them itself,
+# with a `logging:` block on every service and `LOG_MAX_SIZE`/`LOG_MAX_FILES` in
+# `.env`. The daemon's own default is unbounded, which is why the stack does not
+# rely on it.
 
 for logfile in /var/log/algojudge/*.log; do
     [ -f "$logfile" ] || continue
