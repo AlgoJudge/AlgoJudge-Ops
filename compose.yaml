@@ -16,23 +16,34 @@
 
 name: algojudge
 
-# **A bound on the log, because the default has none.** Docker's `json-file`
-# driver writes until the disk is full: a contest's worth of judging is tens of
-# thousands of lines per Runner, and nothing here or in `scripts/gc.sh` rotates
-# it. The failure is the worst kind — the installation stops because the volume
-# it shares with PostgreSQL is full, and the reason is in the file that filled
-# it.
+# **A bound on the log, because the daemon's own default has none.** Left to
+# itself Docker writes a `json-file` until the disk is full: a contest's worth of
+# judging is tens of thousands of lines per Runner, and nothing here or in
+# `scripts/gc.sh` rotates it. The failure is the worst kind — the installation
+# stops because the volume it shares with PostgreSQL is full, and the reason is
+# in the file that filled it.
 #
-# Ten megabytes times three is enough to hold what an operator would actually
-# read after something went wrong, and small enough that eight services cannot
-# add up to a problem. `docker compose logs` reads only what is kept, so a
-# diagnosis wants collecting before the window closes — `docs/OPERATIONS.md`
-# says so beside the commands.
+# **`local` rather than `json-file`.** It is Docker's own driver for the case
+# where nobody is going to read the file by hand: it is bounded whether or not
+# anybody says so, it compresses what it rotates, and it costs less to write
+# because it does not JSON-escape and stamp every line. Twenty megabytes times
+# five holds several times the history the old ten-times-three did, for about the
+# same disk.
+#
+# **What changes for an operator, and it is one thing.** `docker logs` and
+# `docker compose logs` read `local` exactly as before — the commands in
+# `docs/OPERATIONS.md` are unaffected. But the file on disk is a compact binary
+# format, so **a collector that tails `*-json.log` off the host filesystem stops
+# finding anything.** That is the one reason to put `json-file` back, and it is
+# the operator's call; nothing here can detect it.
+#
+# `docker compose logs` still reads only what is kept, so a diagnosis wants
+# collecting before the window closes.
 x-logging: &logging
-  driver: json-file
+  driver: local
   options:
-    max-size: ${LOG_MAX_SIZE:-10m}
-    max-file: "${LOG_MAX_FILES:-3}"
+    max-size: ${LOG_MAX_SIZE:-20m}
+    max-file: "${LOG_MAX_FILES:-5}"
 
 services:
 

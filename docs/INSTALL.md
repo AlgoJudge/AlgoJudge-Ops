@@ -66,16 +66,20 @@ From an empty directory to an installation that judges a submission.
 - **Disk for backups**, ideally on a **different filesystem** from the
   PostgreSQL volume. On one filesystem no reserve setting can guarantee that a
   backup will not starve the database it is backing up.
-- ~~**A bounded container log driver.**~~ **No longer a host requirement**, and
-  it used to be the commonest way one of these hosts filled its disk. Docker's
-  default is an unbounded JSON file, so this asked every operator to edit
-  `/etc/docker/daemon.json` and restart the daemon before installing anything.
+- **A bounded container log driver is not a host requirement.** `compose.yaml`
+  sets `logging:` on every service itself — Docker's `local` driver, bounded by
+  `LOG_MAX_SIZE` and `LOG_MAX_FILES` in `.env` — so the stack does not depend on
+  what the daemon is set to, and there is nothing to do before installing.
 
-  `compose.yaml` now sets `logging:` on every service itself — `LOG_MAX_SIZE`
-  and `LOG_MAX_FILES` in `.env` — which overrides the daemon's default for this
-  stack and needs nothing from the host. **Setting it on the daemon is still a
-  good idea** for whatever else runs there; it is simply not this
-  installation's business any more, and not a step to do first.
+  The daemon's own default is an unbounded JSON file, and it used to be the
+  commonest way one of these hosts filled its disk. **Setting a bound on the
+  daemon is still worth doing** for whatever else runs on the machine; it is
+  simply not this installation's business.
+
+  One consequence, if you ship logs somewhere: `docker logs` and `docker compose
+  logs` read `local` exactly as they read `json-file`, but a collector that tails
+  `*-json.log` off the host filesystem will not find these. Change the driver in
+  `compose.yaml` if you run one.
 
 ## One time, by hand: the packages must be public
 
