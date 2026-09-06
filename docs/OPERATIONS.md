@@ -64,6 +64,26 @@ it breaks three things at once:
 `nginx/algojudge.conf` says `proxy_intercept_errors off` under the API location
 for this reason, and `scripts/check-repository.py` fails if that changes.
 
+### The page that *is* a way, for the other failure
+
+`nginx/offline/index.html` is shown when the **Client container** is not there —
+never during maintenance. The two cases are not the same: a maintenance window
+is the Server answering 503 and the Client turning that into its own page, in
+this installation's language and branding; this one is for when there is no
+application left to draw anything at all. Only 502 and 504 reach it, and only
+from `location /`.
+
+It answers **502**, not 200. `error_page 502 504 @offline` keeps the upstream's
+status; writing `= @offline` instead takes the status from the page, and a
+monitor, a browser cache and a crawler would all be told the site is fine at the
+moment it is down. The `=` also loses the `Cache-Control: no-store`.
+
+It is **one file that makes no request** — no stylesheet, no font, no script, and
+the illustration inline as a `data:` URI. That is not tidiness: it is served for
+every address that failed, so a relative path to an image would resolve
+differently on each of them, and an image location of its own is one more thing
+that has to be right at exactly the wrong moment.
+
 ## Backup
 
 ```bash
