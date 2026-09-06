@@ -61,8 +61,9 @@ From an empty directory to an installation that judges a submission.
   shipping 6.8, and includes Debian 13. Neither a verdict nor a submission's own
   numbers depend on it: a judged run's peak is read from the cgroup made for that
   run, which is fresh. What is absent is the peak of the runs that are nobody's
-  submission — a build, a checker, an interactor — and the Runner says so at
-  `ERROR` on every start. `cgroupfs` reports every one of them from 5.19.
+  submission — a build, a checker, an interactor — and the Runner says so on
+  every start, as a warning carrying `peak memory will not be reported`.
+  `cgroupfs` reports every one of them from 5.19.
 
   **`preflight.sh` refuses on a cgroup version below 2**, and on a driver that
   is neither of the two. It refuses rather than warning because the Runner now
