@@ -346,13 +346,12 @@ services:
 
     cgroup: host
 
-    # **Root, and the cgroup tree is why.** Both ways of measuring write in the
-    # host's cgroup tree — a directory under `cgroupfs`, the `memory.peak` reset
-    # under `systemd` — and that tree's directories are root's. The image runs
-    # as `nonroot`, and the two backends lose different things without this:
-    # under `cgroupfs` the Runner **refuses to start**, and under `systemd` it
-    # starts, judges correctly and reports no peak memory, saying so at `ERROR`
-    # on every start. Measured on all four combinations, 2026-09-03.
+    # **Root, and the cgroup tree is why.** The Runner writes in the host's cgroup
+    # tree under either driver — it makes a cgroup per judged run holding the
+    # submission alone, which is where a memory limit is enforced — and that
+    # tree's directories are root's. The image runs as `nonroot`, so without
+    # this the Runner **refuses to start**, whichever driver the daemon has, and
+    # says which write it could not make.
     #
     # **It costs less than it reads.** This container holds the Docker socket,
     # which is root-equivalent on the host by itself, so the uid inside it was
