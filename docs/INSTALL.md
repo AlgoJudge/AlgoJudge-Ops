@@ -432,6 +432,33 @@ Client**. Leaving that last one empty on two origins is the mistake worth naming
 a sign-in through an identity provider ends at a bare `/activities`, which the
 browser resolves against the API's origin and where it finds a 404.
 
+**The two origins must be the same site** — the same registrable domain and the
+same scheme. `algojudge.example` beside `api.algojudge.example` is one site, and
+everything works: measured 2026-09-06, a page on one drawing the figures in a
+problem statement from the other, every one answered `200 image/png`.
+`algojudge.example` beside `algojudge-api.other` is **two** sites, and then
+nobody can sign in at all. The session cookie is `SameSite=Lax`; a browser will
+not keep it when the sign-in answer comes from another site, so `POST
+/identity/login` answers `200` with a `Set-Cookie`, the browser stores nothing,
+the next request is `401`, and the application sits on the login screen **with no
+error anywhere**. A `Domain` on the cookie does not help: a server may only widen
+one to its own parent domain, never to somebody else's.
+
+`AJ_Cors__AllowedOrigins` is not set by this stack, for the reason
+`AJ_PublicApiUrl` is not — an empty list entry is not the same as none. Write an
+overlay, as that one does:
+
+```yaml
+# state/origins.compose.yaml
+services:
+  server:
+    environment:
+      AJ_Cors__AllowedOrigins__0: https://algojudge.example
+```
+
+One index per origin. `AJ_Cors__AllowedOrigins=a,b` binds **zero** of them,
+silently, and every call from the browser then fails where no log is looking.
+
 ### If you use LTI
 
 `AJ_PublicApiUrl` is **deliberately not set by this stack**, and setting it in
