@@ -347,9 +347,9 @@ services:
     cgroup: host
 
     # **Root, and the cgroup tree is why.** The Runner writes in the host's cgroup
-    # tree under either driver — it makes a cgroup per judged run holding the
-    # submission alone, which is where a memory limit is enforced — and that
-    # tree's directories are root's. The image runs as `nonroot`, so without
+    # tree under either driver, and so does the shim inside each judged
+    # container: a memory limit is enforced on a cgroup made there, holding the
+    # submission alone. That tree's directories are root's. The image runs as `nonroot`, so without
     # this the Runner **refuses to start**, whichever driver the daemon has, and
     # says which write it could not make.
     #
