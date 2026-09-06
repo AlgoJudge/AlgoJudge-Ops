@@ -31,8 +31,9 @@ From an empty directory to an installation that judges a submission.
   **Either cgroup driver is fine, and neither needs the daemon reconfigured.**
   Under `cgroupfs` the Runner makes a cgroup per run; under `systemd`, where
   cgroups belong to systemd, it keeps one slice for its whole life and reads each
-  run as the change across it. Under both it also makes one cgroup per judged run
-  for the submission itself, which is where its memory limit is enforced.
+  run as the change across it. Under both, a memory limit is enforced on a further
+  cgroup made **inside** each judged container, holding the submission alone —
+  which is why this mount has to be writable whichever driver is in use.
 
   `compose.yaml` supplies everything else: **`/sys/fs/cgroup` mounted writable,
   `cgroup: host`** so that the path the Runner reads is the path the daemon
