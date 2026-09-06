@@ -33,7 +33,11 @@ From an empty directory to an installation that judges a submission.
   cgroups belong to systemd, it keeps one slice for its whole life and reads each
   run as the change across it. Under both, a memory limit is enforced on a further
   cgroup made **inside** each judged container, holding the submission alone —
-  which is why this mount has to be writable whichever driver is in use.
+  which is why this mount has to be writable whichever driver is in use. The
+  Runner proves that at start under both drivers, by making a cgroup and taking
+  it away again, and **refuses to start** when it cannot: a Runner that came up
+  on a read-only tree would register, answer the protocol, and then fail every
+  job it claimed.
 
   `compose.yaml` supplies everything else: **`/sys/fs/cgroup` mounted writable,
   `cgroup: host`** so that the path the Runner reads is the path the daemon
