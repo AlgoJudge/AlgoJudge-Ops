@@ -31,7 +31,8 @@ From an empty directory to an installation that judges a submission.
   **Either cgroup driver is fine, and neither needs the daemon reconfigured.**
   Under `cgroupfs` the Runner makes a cgroup per run; under `systemd`, where
   cgroups belong to systemd, it keeps one slice for its whole life and reads each
-  run as the change across it.
+  run as the change across it. Under both it also makes one cgroup per judged run
+  for the submission itself, which is where its memory limit is enforced.
 
   `compose.yaml` supplies everything else: **`/sys/fs/cgroup` mounted writable,
   `cgroup: host`** so that the path the Runner reads is the path the daemon
@@ -44,18 +45,19 @@ From an empty directory to an installation that judges a submission.
   says what follows from that. Nothing it *starts* gains anything: a job
   container still runs as `65534:65534` with every capability dropped.
 
-  **The two backends do not need those equally.** Under `cgroupfs` the Runner
-  creates a cgroup, so a writable mount and root are what let it start at all;
-  without them it refuses. Under `systemd` it creates nothing and only reads, so
-  it starts and judges either way, and what root and the writable mount buy is
-  the **peak-memory number**. Measured on all four combinations, 2026-09-03.
+  **Both backends need those, and neither starts without them.** A memory limit
+  is enforced on a cgroup holding the submission alone, made per judged run, and
+  that one is the Runner's to make under either driver — so a tree it cannot
+  write into is a refusal at start rather than a stack that comes up and fails
+  every submission.
 
-  **A `systemd` host can lose that number for a second reason, and it is still
-  not the verdict.** The reset of `memory.peak` arrived in **Linux 6.12** — which
-  excludes Ubuntu 24.04, shipping 6.8, and includes Debian 13. On an
-  older kernel the Runner judges exactly as it should — the verdict is processor
-  time — and says at `ERROR` on every start that the number beside it will be
-  absent. `cgroupfs` reports it on any kernel from 5.19.
+  **A `systemd` host below Linux 6.12 loses less than it sounds like.** That
+  kernel brought the reset of `memory.peak` — which excludes Ubuntu 24.04,
+  shipping 6.8, and includes Debian 13. Neither a verdict nor a submission's own
+  numbers depend on it: a judged run's peak is read from the cgroup made for that
+  run, which is fresh. What is absent is the peak of the runs that are nobody's
+  submission — a build, a checker, an interactor — and the Runner says so at
+  `ERROR` on every start. `cgroupfs` reports every one of them from 5.19.
 
   **`preflight.sh` refuses on a cgroup version below 2**, and on a driver that
   is neither of the two. It refuses rather than warning because the Runner now
