@@ -54,16 +54,22 @@ reading those files, not by a registry.
 nothing in it: everything here resolves to the moving major `0`, which does not
 exist until steps 1 to 3 have run.
 
-**Seven of the eight packages need a one-time flip to public**, or `docker pull`
-needs a token and the instructions in `INSTALL.md` do not work as written. The
-eighth, `algojudge-external-runner`, is built from a private repository, so
-whether it is ever made public is a decision somebody takes rather than a step in
-a list — until it is, that one profile needs `docker login ghcr.io`.
+**All eight packages are public**, read without credentials on 2026-09-08 at `0`
+and `0.1.0`. A package created by its first push is private, so this is a step
+that returns with every new image — including `algojudge-external-runner`, which
+is built from a private repository and was published anyway, so that profile
+needs no `docker login` either.
 
 ## Before the tag
 
 - [ ] **The eight images exist in GHCR under the tag this asks for.** Steps 1 to
       3 above have run, and `docker compose pull` in a clone resolves all eight.
+
+      **`compose pull` reaches six of them.** The four `lang-*` images are not
+      services — they are values the Runner is handed — so pull them by name, or
+      run `scripts/update.sh`, which does it for you. A Runner pulls one only
+      when the host has none at all, so an old copy is used silently and every
+      job fails on the missing shim.
 - [ ] **CI has run on the commit being tagged.** `.github/workflows/check.yml`
       triggers on `push` to `main` and on `pull_request` only, so **nothing runs
       on `release/0.1.0`**. Merge it, or open the pull request, and read that
@@ -170,11 +176,39 @@ tools: Docker 29.6.2, Compose v5.3.1, Python 3.14.6, GNU bash 4.4.
   `OPERATIONS.md` agree on the schedule. The prose itself was not proofread line
   by line.
 
-**Not checked, because it cannot be yet**: no image was pulled and no stack was
-brought up against `ghcr.io/algojudge`, which is empty; the one-time flip of the
-packages to public has not been exercised; and no installation has been stood up
-end to end from a tag. The seven arrangements were resolved with `docker compose
-config`, which expands and validates but pulls nothing.
+## The stand-up of 2026-09-08, from the published images
+
+The step this file used to call impossible. WSL Ubuntu 26.04, Docker 29.7.2,
+Compose v5.4.0, cgroup v2 under the `systemd` driver, `release/0.1.0` cloned
+fresh and given its own project name.
+
+| | |
+|---|---|
+| `docker compose pull` | six services resolved at `0`; `algojudge-client:0` came back as `sha256:6f124296…`, the digest that release published |
+| `preflight.sh` | `ready: edge,app,data,runner`, after it asked for a certificate and the host's real `DOCKER_GID` |
+| `up -d --wait` | eight containers healthy in **16 s** |
+| The schema | one migration per context on an empty database — `20260907183332_version_0_1_0`, and the LTI module's own |
+| The Runners | four registered `pendingApproval`, approved through `POST /runners/{id}/approve` |
+| A submission | `fixtures/sum.zip` as the problem, a correct C++ solution → **Accepted, 100**, and one wrong by one → **Wrong answer, 0**. Under four seconds each |
+| `update.sh` | run against the real registry for the first time: pulled everything, said *nothing new*, closed nothing |
+
+**What it found.** The stack attached another installation's volumes, because
+`name: algojudge` is in `compose.yaml` and the host had them from an earlier
+rehearsal — PostgreSQL then refused a password that was only ever read when its
+volume was created. That is documented in `INSTALL.md` under *The project name is
+`algojudge`*, symptom and all, and the fix was the project name that section
+gives.
+
+The other was not documented and is now: **`compose pull` never fetched the four
+language images**, and a Runner pulls one only when the host has none, so a
+toolchain image from a week earlier survived an update and failed every job on a
+missing `aj-shim`. `update.sh` pulls them, and `TROUBLESHOOTING.md` carries the
+symptom — including that the Runner must be restarted afterwards, because it
+probes each image once and remembers.
+
+**Still not checked**: `rollback.sh` against a real registry, a `STORAGE_KIND` of
+`filesystem` or `s3` started at all, and an installation reached from a browser
+over its own TLS rather than through the API.
 
 ## After the tag
 
