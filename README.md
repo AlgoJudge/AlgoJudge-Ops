@@ -45,9 +45,14 @@ other.
 | `cron/` | the suggested schedule, installed only if you ask |
 | `docs/` | [INSTALL](docs/INSTALL.md), [OPERATIONS](docs/OPERATIONS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) |
 
-**Seven profile names, six services.** `data`, `app`, `server`, `client`, `edge`,
-`runner` and `external-runner` — the Server and the Client each carry two, which
-is what lets one half be brought up on its own.
+**Seven profile names, nine services.** `data`, `app`, `server`, `client`,
+`edge`, `runner` and `external-runner` — the Server and the Client each carry
+two, which is what lets one half be brought up on its own. The nine are
+`postgres`, `server`, `client`, `nginx`, `external-runner` and a fleet of four:
+`runner-1` to `runner-4`, one image and four identities. **Four is the reference,
+not a minimum** — it suits eight physical cores and leaves four for everything
+else; on a smaller host run fewer, because more Runners than cores does not judge
+faster and does stop judging accurately.
 
 ## Quick start
 

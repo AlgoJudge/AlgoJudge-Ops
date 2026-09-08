@@ -116,10 +116,9 @@ needs no `docker login` either.
       tree, `git ls-files`, and that `.gitignore` still excludes `.env` and
       `.env.*` while un-ignoring `.env.example`. A real one is not read, printed
       or quoted anywhere, here or in a report.
-- [ ] **The pinned upstream images are still receiving updates.** `POSTGRES_TAG`
-      and `NGINX_TAG` move on somebody else's schedule and nothing here notices
-      when a branch reaches end of life. Read what is recorded below, then check
-      it again.
+- [ ] **Every image this repository pins is a tag somebody still builds**, read
+      by the date it was last built rather than by whether `docker pull` works.
+      See *Every image this repository pins*.
 - [ ] **The host requirements name the versions this stack actually needs**, not
       a floor that was true once — `INSTALL.md`, under *What the host needs*.
 - [ ] The documentation here says what the scripts do: `INSTALL.md`,
@@ -131,6 +130,46 @@ needs no `docker login` either.
       moment `0.1.0` exists: `docs/INSTALL.md` (*Not done yet*, under the
       public-packages section), `docs/OPERATIONS.md` (*Running against locally
       built images*), and the closing comment in `.github/workflows/check.yml`.
+
+## Every image this repository pins
+
+Ten, and only two of them are somebody else's.
+
+| Image | Where | Whose schedule |
+|---|---|---|
+| `postgres:${POSTGRES_TAG:-18}` | `compose.yaml`, `.env.example` | upstream |
+| `nginx:${NGINX_TAG:-1.30-alpine}` | `compose.yaml`, `.env.example`, `check.yml`, `docs/TROUBLESHOOTING.md` | upstream |
+| `algojudge-server`, `algojudge-client` | `compose.yaml` at `${SERVER_TAG:-0}` / `${CLIENT_TAG:-0}` | ours |
+| `algojudge-runner` and `lang-gcc`, `lang-clang`, `lang-python`, `lang-pypy` | `compose.yaml` at `${RUNNER_TAG:-0}` | ours |
+| `algojudge-external-runner` | `compose.yaml` at `${EXTERNAL_RUNNER_TAG:-0}` | ours |
+
+**Ours are settled by the release order above**: the moving major `0` names
+whatever those repositories published last, and the check is that all eight
+resolve.
+
+**The two upstream ones are the ones that rot quietly**, because a tag goes on
+resolving long after anybody stops building it. Read the date, not the pull:
+
+```bash
+for i in postgres:18 nginx:1.30-alpine; do
+  curl -s "https://hub.docker.com/v2/repositories/library/${i%%:*}/tags/${i##*:}" |
+    python3 -c "import json,sys; d=json.load(sys.stdin); print(d['name'], d['last_updated'][:10])"
+done
+```
+
+Read on **2026-09-08**: `postgres:18` built 2026-08-26 and is the newest major —
+there is no 19. `nginx:1.30-alpine` built 2026-09-03; nginx numbers even minors
+stable and odd ones mainline, so 1.30 is stable and 1.31 is mainline.
+
+**This is not a hypothetical.** `NGINX_TAG` was `1.27-alpine` until 2026-09-08:
+that branch reached end of life on 2025-06-24 and the tag was last built
+2025-04-16, while pulling cleanly the whole time. Nothing in CI or in
+`check-repository.py` noticed, and nothing will — the check is this paragraph and
+somebody doing it.
+
+Raising `NGINX_TAG` is a decision about **three** places, not one:
+`AlgoJudge-Client` builds its image `FROM nginx:…` and `AlgoJudge-Docs` serves
+its own site from another. Know which of the three you are moving.
 
 ## What was checked on 2026-09-07, and against what
 
