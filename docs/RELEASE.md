@@ -206,9 +206,32 @@ missing `aj-shim`. `update.sh` pulls them, and `TROUBLESHOOTING.md` carries the
 symptom — including that the Runner must be restarted afterwards, because it
 probes each image once and remembers.
 
-**Still not checked**: `rollback.sh` against a real registry, a `STORAGE_KIND` of
-`filesystem` or `s3` started at all, and an installation reached from a browser
-over its own TLS rather than through the API.
+**`update.sh` and `rollback.sh` were then driven for real**, by moving a tag the
+way a release moves one. The update swapped the container, recorded
+`state/current.lock`, and the rollback put the recorded digests back and came up
+healthy; a submission judged `Accepted` afterwards, with the language images
+pinned by digest.
+
+That drill found two more, both fixed here:
+
+- **`update.sh` compared a service called `runner`, which does not exist.** The
+  services are `runner-1` ... `runner-N`, so every Runner went uncompared and
+  unrecorded: a release that moved only the Runner read as *nothing new*, and a
+  rollback had no Runner image to go back to. `state/current.lock` had six
+  services in it and none of them a Runner.
+- **The four language images were in neither file.** They are recorded as
+  `lang:` lines now, and a rollback pins them back through
+  `AJ_Sandbox__Image__*` on each Runner.
+
+**Still not checked**: a `STORAGE_KIND` of `filesystem` or `s3` started at all,
+and an installation reached from a browser over its own TLS rather than through
+the API.
+
+**Known and not fixed**: `update.sh` asks whether the tag a container was created
+*from* has moved, not whether the installation now asks for a **different** tag.
+An operator who edits `SERVER_TAG` in `.env` — the documented way to pin a
+version — is told *nothing new. Not closing anything.* Measured 2026-09-08 with a
+container on `:1` and `.env` asking for `0`.
 
 ## After the tag
 
