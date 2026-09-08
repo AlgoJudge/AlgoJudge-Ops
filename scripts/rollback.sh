@@ -79,12 +79,40 @@ fi
 # pinned after somebody had forgotten why, and the next `update.sh` would find
 # "nothing new" for ever.
 
+# **`lang:` lines are not services.** They record the four language images the
+# Runner was judging with, which `compose` has no concept of: they reach it as
+# `AJ_Sandbox__Image__*`, so that is how they go back. A Runner restored beside
+# whatever language images the host has now is the one combination
+# `AlgoJudge-Runner` tells operators not to run.
+lang_env() {
+    local lang key image
+    while read -r lang image; do
+        case $lang in lang:*) ;; *) continue ;; esac
+        case ${lang#lang:} in
+            gcc) key=Gcc ;; clang) key=Clang ;;
+            python) key=Python ;; pypy) key=Pypy ;;
+            *) continue ;;
+        esac
+        printf '      AJ_Sandbox__Image__%s: %s\n' "$key" "$image"
+    done <"$LOCK_FILE"
+}
+
 override="$ROOT/state/rollback.compose.yaml"
 {
     printf 'services:\n'
+    languages=$(lang_env)
     while read -r service image; do
         [ -n "$service" ] || continue
+        case $service in lang:*) continue ;; esac
         printf '  %s:\n    image: %s\n' "$service" "$image"
+        case $service in
+            runner-*)
+                if [ -n "$languages" ]; then
+                    printf '    environment:\n'
+                    printf '%s\n' "$languages"
+                fi
+                ;;
+        esac
     done <"$LOCK_FILE"
 } >"$override"
 

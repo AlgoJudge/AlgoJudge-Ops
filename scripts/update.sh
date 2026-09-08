@@ -30,6 +30,33 @@ done
 
 LOCK_FILE="$ROOT/state/current.lock"
 
+# **Every service this installation runs that carries an image of ours.**
+#
+# `runner` is not one of them. `compose.yaml` defines `runner-1` ... `runner-N`,
+# so the literal `runner` this file used matched no service: every Runner went
+# uncompared and unrecorded. A release that moved only the Runner read as
+# "nothing new", and a rollback had no Runner image to go back to. Measured
+# 2026-09-08.
+product_services() {
+    compose config --services 2>/dev/null |
+        grep -E '^(server|client|external-runner|runner-[0-9]+)$' || true
+}
+
+# The four language images. They are not services -- they are values the Runner
+# is handed -- so nothing built on `compose` sees them at all.
+LANGS="gcc clang python pypy"
+
+lang_image() { printf '%s/lang-%s:%s\n' "${REGISTRY:-ghcr.io/algojudge}" "$1" "${RUNNER_TAG:-0}"; }
+
+lang_key() {
+    case $1 in
+        gcc) printf 'Gcc' ;; clang) printf 'Clang' ;;
+        python) printf 'Python' ;; pypy) printf 'Pypy' ;;
+    esac
+}
+
+judges_here() { product_services | grep -q '^runner-'; }
+
 # The digest each service is running right now, one `service repo@sha256:…` per
 # line. This is what a rollback restores.
 #
@@ -42,8 +69,8 @@ LOCK_FILE="$ROOT/state/current.lock"
 # pushed anywhere. It pins correctly here and cannot be pulled elsewhere, which
 # is the honest limit of a digest that no registry has.
 digests() {
-    local service id reference digest
-    for service in server client runner external-runner; do
+    local service id reference digest lang
+    for service in $(product_services); do
         id=$(compose ps -q "$service" 2>/dev/null | head -1)
         [ -n "$id" ] || continue
         reference=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null)
@@ -52,6 +79,22 @@ digests() {
         [ -n "$digest" ] || digest=$(docker inspect --format '{{.Image}}' "$id" 2>/dev/null)
         printf '%s %s\n' "$service" "$digest"
     done
+
+    # **`lang:` lines, and `rollback.sh` reads them as environment rather than as
+    # services.** A Runner put back without the language images it was released
+    # with is the one combination `AlgoJudge-Runner`'s README tells operators not
+    # to run, and nothing would catch it: the Runner checks that an image carries
+    # `aj-shim`, never which version.
+    if judges_here; then
+        for lang in $LANGS; do
+            reference=$(lang_image "$lang")
+            digest=$(docker image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' \
+                "$reference" 2>/dev/null)
+            [ -n "$digest" ] || digest=$(docker image inspect --format '{{.Id}}' "$reference" 2>/dev/null)
+            [ -n "$digest" ] || continue
+            printf 'lang:%s %s\n' "$lang" "$digest"
+        done
+    fi
 }
 
 # ── 1. The repository ───────────────────────────────────────────────────────
@@ -83,9 +126,9 @@ $dry_run || compose pull --quiet
 # probes each image once and remembers the answer for its lifetime. So an
 # installation updated without this keeps last year's toolchain for ever, with
 # every container new and nothing to see. Measured 2026-09-08.
-if runs_service runner-1 runner; then
-    for lang in gcc clang python pypy; do
-        image="${REGISTRY:-ghcr.io/algojudge}/lang-$lang:${RUNNER_TAG:-0}"
+if judges_here; then
+    for lang in $LANGS; do
+        image=$(lang_image "$lang")
         log "pulling $image"
         $dry_run || docker pull --quiet "$image" >/dev/null || warn "could not pull $image;
        the Runner will keep using the copy this host already has"
@@ -113,10 +156,7 @@ selected=$(compose config --services 2>/dev/null)
        update closes a stack it should have left alone."
 
 changed=""
-for service in server client runner external-runner; do
-    printf '%s
-' "$selected" | grep -qxF "$service" || continue
-
+for service in $(product_services); do
     id=$(compose ps -q "$service" 2>/dev/null | head -1)
     if [ -z "$id" ]; then
         # Selected but not running: starting it is the update.
@@ -131,6 +171,25 @@ for service in server client runner external-runner; do
         log "  $service: ${was#sha256:} -> ${now#sha256:}"
     fi
 done
+
+# **The language images, compared against what the last update recorded.** They
+# are not services, so the loop above cannot see them, and a Runner probes each
+# image once and remembers the answer for its lifetime -- so a new one is picked
+# up only when the Runner container is recreated, which is what `changed` causes.
+if [ -s "$LOCK_FILE" ] && judges_here; then
+    for lang in $LANGS; do
+        was=$(grep -m1 "^lang:$lang " "$LOCK_FILE" | cut -d' ' -f2-)
+        [ -n "$was" ] || continue
+        reference=$(lang_image "$lang")
+        now=$(docker image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' \
+            "$reference" 2>/dev/null)
+        [ -n "$now" ] || now=$(docker image inspect --format '{{.Id}}' "$reference" 2>/dev/null || true)
+        if [ -n "$now" ] && [ "$was" != "$now" ]; then
+            changed="$changed lang-$lang"
+            log "  lang-$lang: ${was##*@} -> ${now##*@}"
+        fi
+    done
+fi
 
 if [ -z "$changed" ]; then
     log "nothing new. Not closing anything."
