@@ -227,11 +227,19 @@ That drill found two more, both fixed here:
 and an installation reached from a browser over its own TLS rather than through
 the API.
 
-**Known and not fixed**: `update.sh` asks whether the tag a container was created
-*from* has moved, not whether the installation now asks for a **different** tag.
-An operator who edits `SERVER_TAG` in `.env` — the documented way to pin a
-version — is told *nothing new. Not closing anything.* Measured 2026-09-08 with a
-container on `:1` and `.env` asking for `0`.
+**A third, found the same day and fixed with them**: `update.sh` asked whether
+the tag a container was created *from* had moved, not whether the installation
+now asks for a **different** tag. An operator who edits `SERVER_TAG` — the
+documented way to pin a version — was told *nothing new. Not closing anything.*
+while the image Compose had just pulled sat unused. It now asks Compose what it
+would run.
+
+That fix needed two attempts, and the first is worth keeping: `compose config
+--images <service>` returns the service's image **and its dependencies'**, and
+the order differs by version — v5.3.1 prints the service first, v5.4.0 prints
+`postgres:18` first. Taking the first line reported an update on every run, on
+one of the two. The line is chosen by the repository the image is named after
+now, and nothing depends on order.
 
 ## After the tag
 

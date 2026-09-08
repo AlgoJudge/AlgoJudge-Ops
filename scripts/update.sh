@@ -57,6 +57,19 @@ lang_key() {
 
 judges_here() { product_services | grep -q '^runner-'; }
 
+# The repository a service's own image is named after, as it appears in a
+# reference: leading slash and trailing colon, because `algojudge-runner` is a
+# substring of `algojudge-external-runner` and a plain match would take the wrong
+# line.
+image_name() {
+    case $1 in
+        server) printf '/algojudge-server:' ;;
+        client) printf '/algojudge-client:' ;;
+        external-runner) printf '/algojudge-external-runner:' ;;
+        runner-*) printf '/algojudge-runner:' ;;
+    esac
+}
+
 # The digest each service is running right now, one `service repo@sha256:…` per
 # line. This is what a rollback restores.
 #
@@ -139,10 +152,22 @@ fi
 # `SERVER_TAG=0` points at a different image after every release, so "is the tag
 # the same" would answer yes for ever.
 #
-# **Asked of the containers, not of `compose config --images`.** That command
-# returns a service's image *and its dependencies'* — `config --images server`
-# prints `postgres:18` first — so taking the first line compares the Server
-# against the database and reports an update on every run.
+# **Against what Compose would run, not against what the container came from.**
+# `.Config.Image` is the reference this container was *created* from, and asking
+# whether that has moved answers only half the question. It is right for a moving
+# tag: `SERVER_TAG=0` names a new image after every release. It is silent for the
+# other arrangement this stack documents — an operator who pins `0.1.0` and later
+# writes `0.1.1` — because `0.1.0` has not moved, so the update reported "nothing
+# new" while the image it had just pulled sat unused. Measured 2026-09-08.
+#
+# `config --images <service>` returns the service's image **and its
+# dependencies'**, and **the order is not something to rely on**: measured
+# 2026-09-08, Compose v5.3.1 prints `algojudge-server:0` before `postgres:18`
+# and v5.4.0 prints them the other way round. Taking the first line therefore
+# compared the Server against the database on one of the two, and reported an
+# update on every single run. The line is picked by the repository the service's
+# image is named after instead, and an answer that matches nothing falls back to
+# the reference the container carries — which is exactly what this did before.
 #
 # **Only the services this installation actually selects.** A service no active
 # profile names has no container, and the branch below reads "no container" as
@@ -163,7 +188,9 @@ for service in $(product_services); do
         changed="$changed $service(new)"
         continue
     fi
-    reference=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null)
+    reference=$(compose config --images "$service" 2>/dev/null |
+        grep -m1 -F "$(image_name "$service")")
+    [ -n "$reference" ] || reference=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null)
     was=$(docker inspect --format '{{.Image}}' "$id" 2>/dev/null)
     now=$(docker image inspect --format '{{.Id}}' "$reference" 2>/dev/null || echo "$was")
     if [ "$was" != "$now" ]; then
