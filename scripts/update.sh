@@ -30,6 +30,46 @@ done
 
 LOCK_FILE="$ROOT/state/current.lock"
 
+# **Every service this installation runs that carries an image of ours.**
+#
+# `runner` is not one of them. `compose.yaml` defines `runner-1` ... `runner-N`,
+# so the literal `runner` this file used matched no service: every Runner went
+# uncompared and unrecorded. A release that moved only the Runner read as
+# "nothing new", and a rollback had no Runner image to go back to. Measured
+# 2026-09-08.
+product_services() {
+    compose config --services 2>/dev/null |
+        grep -E '^(server|client|external-runner|runner-[0-9]+)$' || true
+}
+
+# The four language images. They are not services -- they are values the Runner
+# is handed -- so nothing built on `compose` sees them at all.
+LANGS="gcc clang python pypy"
+
+lang_image() { printf '%s/lang-%s:%s\n' "${REGISTRY:-ghcr.io/algojudge}" "$1" "${RUNNER_TAG:-0}"; }
+
+lang_key() {
+    case $1 in
+        gcc) printf 'Gcc' ;; clang) printf 'Clang' ;;
+        python) printf 'Python' ;; pypy) printf 'Pypy' ;;
+    esac
+}
+
+judges_here() { product_services | grep -q '^runner-'; }
+
+# The repository a service's own image is named after, as it appears in a
+# reference: leading slash and trailing colon, because `algojudge-runner` is a
+# substring of `algojudge-external-runner` and a plain match would take the wrong
+# line.
+image_name() {
+    case $1 in
+        server) printf '/algojudge-server:' ;;
+        client) printf '/algojudge-client:' ;;
+        external-runner) printf '/algojudge-external-runner:' ;;
+        runner-*) printf '/algojudge-runner:' ;;
+    esac
+}
+
 # The digest each service is running right now, one `service repo@sha256:…` per
 # line. This is what a rollback restores.
 #
@@ -42,8 +82,8 @@ LOCK_FILE="$ROOT/state/current.lock"
 # pushed anywhere. It pins correctly here and cannot be pulled elsewhere, which
 # is the honest limit of a digest that no registry has.
 digests() {
-    local service id reference digest
-    for service in server client runner external-runner; do
+    local service id reference digest lang
+    for service in $(product_services); do
         id=$(compose ps -q "$service" 2>/dev/null | head -1)
         [ -n "$id" ] || continue
         reference=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null)
@@ -52,6 +92,22 @@ digests() {
         [ -n "$digest" ] || digest=$(docker inspect --format '{{.Image}}' "$id" 2>/dev/null)
         printf '%s %s\n' "$service" "$digest"
     done
+
+    # **`lang:` lines, and `rollback.sh` reads them as environment rather than as
+    # services.** A Runner put back without the language images it was released
+    # with is the one combination `AlgoJudge-Runner`'s README tells operators not
+    # to run, and nothing would catch it: the Runner checks that an image carries
+    # `aj-shim`, never which version.
+    if judges_here; then
+        for lang in $LANGS; do
+            reference=$(lang_image "$lang")
+            digest=$(docker image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' \
+                "$reference" 2>/dev/null)
+            [ -n "$digest" ] || digest=$(docker image inspect --format '{{.Id}}' "$reference" 2>/dev/null)
+            [ -n "$digest" ] || continue
+            printf 'lang:%s %s\n' "$lang" "$digest"
+        done
+    fi
 }
 
 # ── 1. The repository ───────────────────────────────────────────────────────
@@ -76,14 +132,42 @@ fi
 log "pulling images (no downtime yet)"
 $dry_run || compose pull --quiet
 
+# **The four language images by hand, because `compose pull` does not reach
+# them.** They are not services -- they are values the Runner is given, and it
+# starts each judged run in one of them. Two facts make the omission silent:
+# the Runner pulls an image only when the host does not have it at all, and it
+# probes each image once and remembers the answer for its lifetime. So an
+# installation updated without this keeps last year's toolchain for ever, with
+# every container new and nothing to see. Measured 2026-09-08.
+if judges_here; then
+    for lang in $LANGS; do
+        image=$(lang_image "$lang")
+        log "pulling $image"
+        $dry_run || docker pull --quiet "$image" >/dev/null || warn "could not pull $image;
+       the Runner will keep using the copy this host already has"
+    done
+fi
+
 # **Compared as image ids, because a moving tag is the normal case.**
 # `SERVER_TAG=0` points at a different image after every release, so "is the tag
 # the same" would answer yes for ever.
 #
-# **Asked of the containers, not of `compose config --images`.** That command
-# returns a service's image *and its dependencies'* — `config --images server`
-# prints `postgres:18` first — so taking the first line compares the Server
-# against the database and reports an update on every run.
+# **Against what Compose would run, not against what the container came from.**
+# `.Config.Image` is the reference this container was *created* from, and asking
+# whether that has moved answers only half the question. It is right for a moving
+# tag: `SERVER_TAG=0` names a new image after every release. It is silent for the
+# other arrangement this stack documents — an operator who pins `0.1.0` and later
+# writes `0.1.1` — because `0.1.0` has not moved, so the update reported "nothing
+# new" while the image it had just pulled sat unused. Measured 2026-09-08.
+#
+# `config --images <service>` returns the service's image **and its
+# dependencies'**, and **the order is not something to rely on**: measured
+# 2026-09-08, Compose v5.3.1 prints `algojudge-server:0` before `postgres:18`
+# and v5.4.0 prints them the other way round. Taking the first line therefore
+# compared the Server against the database on one of the two, and reported an
+# update on every single run. The line is picked by the repository the service's
+# image is named after instead, and an answer that matches nothing falls back to
+# the reference the container carries — which is exactly what this did before.
 #
 # **Only the services this installation actually selects.** A service no active
 # profile names has no container, and the branch below reads "no container" as
@@ -97,17 +181,16 @@ selected=$(compose config --services 2>/dev/null)
        update closes a stack it should have left alone."
 
 changed=""
-for service in server client runner external-runner; do
-    printf '%s
-' "$selected" | grep -qxF "$service" || continue
-
+for service in $(product_services); do
     id=$(compose ps -q "$service" 2>/dev/null | head -1)
     if [ -z "$id" ]; then
         # Selected but not running: starting it is the update.
         changed="$changed $service(new)"
         continue
     fi
-    reference=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null)
+    reference=$(compose config --images "$service" 2>/dev/null |
+        grep -m1 -F "$(image_name "$service")")
+    [ -n "$reference" ] || reference=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null)
     was=$(docker inspect --format '{{.Image}}' "$id" 2>/dev/null)
     now=$(docker image inspect --format '{{.Id}}' "$reference" 2>/dev/null || echo "$was")
     if [ "$was" != "$now" ]; then
@@ -115,6 +198,25 @@ for service in server client runner external-runner; do
         log "  $service: ${was#sha256:} -> ${now#sha256:}"
     fi
 done
+
+# **The language images, compared against what the last update recorded.** They
+# are not services, so the loop above cannot see them, and a Runner probes each
+# image once and remembers the answer for its lifetime -- so a new one is picked
+# up only when the Runner container is recreated, which is what `changed` causes.
+if [ -s "$LOCK_FILE" ] && judges_here; then
+    for lang in $LANGS; do
+        was=$(grep -m1 "^lang:$lang " "$LOCK_FILE" | cut -d' ' -f2-)
+        [ -n "$was" ] || continue
+        reference=$(lang_image "$lang")
+        now=$(docker image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' \
+            "$reference" 2>/dev/null)
+        [ -n "$now" ] || now=$(docker image inspect --format '{{.Id}}' "$reference" 2>/dev/null || true)
+        if [ -n "$now" ] && [ "$was" != "$now" ]; then
+            changed="$changed lang-$lang"
+            log "  lang-$lang: ${was##*@} -> ${now##*@}"
+        fi
+    done
+fi
 
 if [ -z "$changed" ]; then
     log "nothing new. Not closing anything."

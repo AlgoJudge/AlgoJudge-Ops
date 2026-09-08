@@ -18,6 +18,22 @@ follow, and they run through everything here:
   crontab; whether and when to run them is yours. The update entry is commented
   out on purpose.
 
+## Documentation
+
+**[docs.algojudge.pl](https://docs.algojudge.pl/en/install/)** carries the
+`/install/` section, and it is written from [`docs/`](docs) here. Read whichever
+suits you: the same material, with search, navigation and Polish.
+
+| | |
+|---|---|
+| [`/en/install/`](https://docs.algojudge.pl/en/install/) | standing an installation up, keeping it running, and getting it back |
+| [`/pl/install/`](https://docs.algojudge.pl/pl/install/) | the same in Polish |
+
+**Drift here becomes drift there.** [INSTALL](docs/INSTALL.md),
+[OPERATIONS](docs/OPERATIONS.md) and [TROUBLESHOOTING](docs/TROUBLESHOOTING.md)
+are what those pages are written from, and nothing checks the two against each
+other.
+
 ## What is here
 
 | | |
@@ -29,9 +45,14 @@ follow, and they run through everything here:
 | `cron/` | the suggested schedule, installed only if you ask |
 | `docs/` | [INSTALL](docs/INSTALL.md), [OPERATIONS](docs/OPERATIONS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) |
 
-**Seven profile names, six services.** `data`, `app`, `server`, `client`, `edge`,
-`runner` and `external-runner` — the Server and the Client each carry two, which
-is what lets one half be brought up on its own.
+**Seven profile names, nine services.** `data`, `app`, `server`, `client`,
+`edge`, `runner` and `external-runner` — the Server and the Client each carry
+two, which is what lets one half be brought up on its own. The nine are
+`postgres`, `server`, `client`, `nginx`, `external-runner` and a fleet of four:
+`runner-1` to `runner-4`, one image and four identities. **Four is the reference,
+not a minimum** — it suits eight physical cores and leaves four for everything
+else; on a smaller host run fewer, because more Runners than cores does not judge
+faster and does stop judging accurately.
 
 ## Quick start
 
@@ -100,8 +121,8 @@ pulled from GHCR by tag; what is assembled here is built elsewhere.
   submissions to an external judging system and reporting back the verdict that
   system reached. It is the `external-runner` profile, which is **not** in the
   default set because it needs an account at that system
-- [AlgoJudge-Docs](https://github.com/AlgoJudge/AlgoJudge-Docs) — the public
-  documentation site, whose `/install/` section is written from `docs/` here
+- [AlgoJudge-Docs](https://github.com/AlgoJudge/AlgoJudge-Docs) — the source of
+  the documentation site linked under *Documentation* above
 
 ## Contributing
 

@@ -509,8 +509,11 @@ images are public in GHCR, so **nothing sensitive may ever be baked into one**.
 
 ## Running against locally built images
 
-Until a release exists, `ghcr.io/algojudge/*` is empty. To run this stack,
-build the product repositories and tag them as published:
+**This is no longer how the stack is normally run.** Every image resolves from
+`ghcr.io/algojudge` at the moving major `0`, and has since 2026-09-08. What this
+section is for is running the stack against code that is **not released** — a
+change in a product repository, a fix on its way to a pull request — by building
+it and tagging it where the published one would be:
 
 ```bash
 docker build -f AlgoJudge-Server/AlgoJudge.Server/Dockerfile -t ghcr.io/algojudge/algojudge-server:0 AlgoJudge-Server

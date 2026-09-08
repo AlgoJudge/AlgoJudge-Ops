@@ -230,7 +230,16 @@ runs_service() {
     local service=$1 profile=$2
     if [ -z "$_selected_services" ]; then
         _selected_services=$(compose config --services 2>/dev/null || true)
-        [ -n "$_selected_services" ] || _selected_services="?"
+        if [ -z "$_selected_services" ]; then
+            # **Say it.** The fallback below answers on the profile string
+            # alone, which is what this function exists to stop relying on, and
+            # it is reached whenever `compose config` produces nothing -- a
+            # Compose that is not installed, but also an overlay in
+            # `COMPOSE_FILE` whose required variables are not filled in yet.
+            # Silently weaker guards are worse than absent ones.
+            warn "docker compose did not answer, so service checks fall back to COMPOSE_PROFILES and are weaker than usual"
+            _selected_services="?"
+        fi
     fi
     if [ "$_selected_services" = "?" ]; then
         case ",${COMPOSE_PROFILES:-}," in

@@ -226,7 +226,7 @@ services:
 
   nginx:
     profiles: ["edge"]
-    image: nginx:${NGINX_TAG:-1.27-alpine}
+    image: nginx:${NGINX_TAG:-1.30-alpine}
     logging: *logging
     restart: unless-stopped
 

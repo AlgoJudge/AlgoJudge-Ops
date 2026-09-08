@@ -11,11 +11,15 @@ From an empty directory to an installation that judges a submission.
 
 ## What the host needs
 
-- **Docker with Compose v2 or later**, and cgroup **v2**. The Runner refuses to
-  start on v1 unless deliberately overridden, and CI asserts v2 rather than
-  trusting the flag. Compose v2 is enough because every value here is passed
-  through `environment:` — nothing in this repository uses the `env_file:` form
-  that needs 2.24.
+- **Docker with Compose v2.15.0 or later**, and cgroup **v2**. The Runner
+  refuses to start on v1 unless deliberately overridden, and CI asserts v2 rather
+  than trusting the flag.
+
+  **2.15.0 is the floor because of `cgroup: host`**, which `compose.yaml` sets on
+  the Runner and which Compose first shipped in that version; `up -d --wait`,
+  used by `install.sh` and `update.sh`, needs 2.1.1. Nothing here uses the
+  `env_file:` form that would ask for 2.24 — every value is passed through
+  `environment:`.
 - **The cgroup tree, and no daemon reconfiguration.** The stack measures a
   submission's processor time and peak memory from a cgroup, because neither is
   available any other way: a container's own cgroup does not outlive it, and the
@@ -70,7 +74,16 @@ From an empty directory to an installation that judges a submission.
   refuses to start without the reading, so a stack that came up with a note
   about it would be a broken installation the operator had been told about
   rather than one they had been stopped from making.
-- **`bash`, `openssl`, `find`, `du`, `df`** — the scripts use nothing else.
+- **The command set the scripts use.** `bash` and `openssl` are the ones worth
+  installing deliberately; the rest are on any Linux host that has coreutils:
+  `awk`, `sed`, `stat`, `sha256sum`, `mktemp`, `date`, `find`, `du`, `df`, `cut`,
+  `tr`, `grep`, `sort`, `head`, `tail`, `wc`.
+
+  **`sed -i` and `stat -c` are the GNU spellings**, so a BSD or macOS host is not
+  one of these hosts. `git`, `flock` and `crontab` are optional and each degrades
+  with a message rather than failing: no `git` means no revision in a backup's
+  manifest, no `flock` means two scripts can overlap, no `crontab` means the
+  schedule is yours to install.
 - **Disk for backups**, ideally on a **different filesystem** from the
   PostgreSQL volume. On one filesystem no reserve setting can guarantee that a
   backup will not starve the database it is backing up.
@@ -89,26 +102,33 @@ From an empty directory to an installation that judges a submission.
   `*-json.log` off the host filesystem will not find these. Change the driver in
   `compose.yaml` if you run one.
 
-## One time, by hand: the packages must be public
+## The images, and why a new one will not be pullable
 
-The release workflow publishes to `ghcr.io/algojudge`, and **a package created
-by its first push is private**. Until each is set to Public once, `docker pull`
-needs a token, which defeats the point of not having a registry login in these
-instructions.
+The release workflow publishes to `ghcr.io/algojudge`, and **a package created by
+its first push is private**. Until somebody sets it to Public once, `docker pull`
+answers `denied` and needs a token — which defeats the point of there being no
+registry login in these instructions. The workflow cannot do it; a person with
+access to the organisation's packages must.
 
-There are **seven**: `algojudge-server`, `algojudge-client`, `algojudge-runner`,
-`lang-gcc`, `lang-clang`, `lang-python`, `lang-pypy`. The workflow cannot do it;
-somebody with access to the organisation's packages must.
+**For 0.1 there is nothing to do: all eight are public.** Read without any
+credentials on 2026-09-08, at `0` and at `0.1.0`:
 
-**An eighth, if you run the `external-runner` profile, and it is not like the
-other seven.** `algojudge-external-runner` is built from a **private**
-repository, so whether that package is ever made public is a decision somebody
-has to take rather than a step in a list. If it is not, this is the one profile
-in this stack that needs a `docker login ghcr.io` before `up`.
+| | |
+|---|---|
+| `algojudge-server`, `algojudge-client` | the application |
+| `algojudge-runner` and `lang-gcc`, `lang-clang`, `lang-python`, `lang-pypy` | judging |
+| `algojudge-external-runner` | the `external-runner` profile |
 
-> **Not done yet.** No release has been cut, so none of them exists. Until then
-> this stack runs only against images built from the product repositories and
-> tagged locally — see `docs/OPERATIONS.md`.
+The last is built from a **private** repository and was published anyway, so that
+profile needs no `docker login` either.
+
+This section stays because the rule outlives the release: **the next image this
+organisation publishes starts private again**, and the symptom is a `denied` on
+`docker compose pull` in an installation that is otherwise correct.
+
+```bash
+docker pull ghcr.io/algojudge/algojudge-server:0    # no login, from anywhere
+```
 
 ## The project name is `algojudge`, and it decides which volumes you get
 
@@ -443,6 +463,24 @@ not keep it when the sign-in answer comes from another site, so `POST
 the next request is `401`, and the application sits on the login screen **with no
 error anywhere**. A `Domain` on the cookie does not help: a server may only widen
 one to its own parent domain, never to somebody else's.
+
+**On two origins, the API's address must not send `X-Frame-Options`** — and the
+bundled `security-headers.conf` sends `SAMEORIGIN`, so a proxy that carries these
+headers in front of the API breaks something that has nothing to do with frames.
+A problem statement in PDF is drawn by the Client with `<object
+data="…/api/v1/files/…">`, which is an embedding like an iframe: on two origins
+the API is a foreign origin, and `SAMEORIGIN` refuses it. **Silently** —
+`X-Frame-Options` writes nothing to the console, unlike the CSP form, so the
+symptom is a statement that shows an empty box with a *download* link and a
+console with nothing in it. Measured 2026-09-08 in Chromium, four header values
+against the same document.
+
+Two ways out, and this stack takes neither for you because it does not know your
+addresses: send **no** frame policy on the API's address — embedding it gains an
+attacker nothing, since the session cookie is `SameSite=Lax` and a foreign
+embedder is answered `401` — or send `frame-ancestors` naming the Client's origin
+**and every LMS platform**, because an LTI launch puts both in the ancestor
+chain. What must not happen is the API answering `X-Frame-Options` at all.
 
 `AJ_Cors__AllowedOrigins` is not set by this stack, for the reason
 `AJ_PublicApiUrl` is not — an empty list entry is not the same as none. Write an
