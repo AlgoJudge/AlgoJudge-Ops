@@ -290,7 +290,7 @@ docker run --rm --add-host server:127.0.0.1 --add-host client:127.0.0.1 \
   -v "$PWD/nginx/algojudge.conf:/etc/nginx/conf.d/default.conf:ro" \
   -v "$PWD/nginx/snippets:/etc/nginx/snippets:ro" \
   -v "$PWD/certs:/etc/nginx/certs:ro" \
-  nginx:1.27-alpine nginx -t
+  nginx:1.30-alpine nginx -t
 ```
 
 `--add-host` is needed because **nginx resolves every upstream while parsing**,
