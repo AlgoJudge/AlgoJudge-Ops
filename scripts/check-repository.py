@@ -232,7 +232,12 @@ def the_api_is_not_intercepted(problems):
     every maintenance level — breaks the thing the Client polls to learn it may
     come back.
     """
-    config = read("nginx/algojudge.conf")
+    # **Comments stripped first: this check reads directives, not prose.**
+    # The `503` search below is a bare regex over the file, so a comment that
+    # explains why 503 is *not* intercepted used to trip it -- `error_page`
+    # written in one sentence and `503` in the next, with no `;` between them to
+    # stop the match. A comment cannot configure nginx and must not fail a gate.
+    config = re.sub(r"#[^\n]*", "", read("nginx/algojudge.conf"))
 
     api = re.search(r"location /api/v1/ \{(.*?)\n    \}", config, re.DOTALL)
     if api is None:
