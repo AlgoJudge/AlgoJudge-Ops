@@ -90,11 +90,15 @@ jobs:
             -v "$PWD/nginx/algojudge.conf:/etc/nginx/conf.d/default.conf:ro" \
             -v "$PWD/nginx/snippets:/etc/nginx/snippets:ro" \
             -v "$PWD/certs:/etc/nginx/certs:ro" \
-            nginx:1.27-alpine nginx -t
+            nginx:1.30-alpine nginx -t
 
-  # **The stack is not brought up and asserted against here.** That check needs
-  # published images, and nothing has been pushed to ghcr.io/algojudge: no
-  # repository carries a `v*` tag, so `algojudge-server:0` resolves to nothing.
-  # It lands with the first release, together with the one-time flip of the
-  # seven packages to public. Until then the stack is verified by hand against
-  # locally built images — `docs/OPERATIONS.md` says how.
+  # **The stack is not brought up and asserted against here**, and since
+  # 2026-09-08 that is a choice rather than an impossibility: all eight images
+  # are published and public, so `algojudge-server:0` resolves for anyone.
+  #
+  # What it would cost is what has to be decided first. Bringing this stack up
+  # in CI means pulling eight images and standing up PostgreSQL, the Server, the
+  # Client, nginx and at least one Runner on every push — and a Runner needs a
+  # writable cgroup tree and the Docker socket, which a hosted runner gives
+  # grudgingly. The release runbook stands one up by hand instead, from the tag,
+  # and `docs/RELEASE.md` records what that proved.
