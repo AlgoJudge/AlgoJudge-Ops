@@ -76,6 +76,22 @@ fi
 log "pulling images (no downtime yet)"
 $dry_run || compose pull --quiet
 
+# **The four language images by hand, because `compose pull` does not reach
+# them.** They are not services -- they are values the Runner is given, and it
+# starts each judged run in one of them. Two facts make the omission silent:
+# the Runner pulls an image only when the host does not have it at all, and it
+# probes each image once and remembers the answer for its lifetime. So an
+# installation updated without this keeps last year's toolchain for ever, with
+# every container new and nothing to see. Measured 2026-09-08.
+if runs_service runner-1 runner; then
+    for lang in gcc clang python pypy; do
+        image="${REGISTRY:-ghcr.io/algojudge}/lang-$lang:${RUNNER_TAG:-0}"
+        log "pulling $image"
+        $dry_run || docker pull --quiet "$image" >/dev/null || warn "could not pull $image;
+       the Runner will keep using the copy this host already has"
+    done
+fi
+
 # **Compared as image ids, because a moving tag is the normal case.**
 # `SERVER_TAG=0` points at a different image after every release, so "is the tag
 # the same" would answer yes for ever.

@@ -95,6 +95,39 @@ In order of how often it is each one:
    Note that **tags are read once, at the first registration** — changing the
    variable later does nothing.
 
+## Every job fails with `carries no /usr/local/bin/aj-shim`
+
+The Runner says, of one of the four language images:
+
+```
+the image ghcr.io/algojudge/lang-gcc:0 carries no /usr/local/bin/aj-shim, so a
+judged run in it would produce neither output nor a measurement
+```
+
+**The host has an old copy of that image.** `aj-shim` is what makes a judged run
+measurable, and a language image from before it existed has none. Two things keep
+this quiet, and both are by design:
+
+- **`docker compose pull` does not fetch the language images.** They are not
+  services — they are values the Runner is given — so nothing in the ordinary
+  update path replaces them. `scripts/update.sh` pulls the four by hand for
+  exactly this reason.
+- **The Runner pulls one only when the host has none at all**, and never because
+  a newer one exists. A stale `lang-gcc:0` is used as it is.
+
+The fix is both halves, and the second is the one people miss:
+
+```bash
+docker pull ghcr.io/algojudge/lang-gcc:0     # and clang, python, pypy
+docker compose restart runner-1              # every runner-N you run
+```
+
+**The restart is not optional.** A Runner probes each image once, the first time
+it uses it, and remembers the answer for as long as the process lives — so a
+Runner that has already decided an image has no shim goes on failing every job
+against the new one. Measured 2026-09-08: the same image, the correct copy
+pulled, and the verdicts came only after the restart.
+
 ## Nothing **external** is being judged
 
 A different list, because the ordinary causes are not the causes here. In order
