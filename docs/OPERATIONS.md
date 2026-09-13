@@ -366,15 +366,21 @@ A clean drain is still `maintenance.sh on --wait-closed` on the **Server**
 first, which `update.sh` does — it stops new work reaching a Runner at all,
 which is tidier than every Runner handing back what it had just been given.
 
-**The External Runner reaches the same conclusion by a different route, and it
-does handle `SIGTERM`.** This paragraph said it did not, and that it had no grace
-period because one would buy nothing; both were already wrong when
-`EXTERNAL_RUNNER_STOP_GRACE` was added — sixty seconds, twice the sandboxing
-Runner's, because it hands back up to `AJ_External__MaxPending` jobs one call
-each. Since 2026-09-04 a job the Server hands over at the very instant of the
-stop is released rather than sent to the archive and then given back, so what a
-grace buys here has grown rather than vanished. **Do not delete
-`EXTERNAL_RUNNER_STOP_GRACE` on the strength of what this used to say.**
+**The External Runner handles `SIGTERM` too, and hands back its whole pool in
+one request.** `EXTERNAL_RUNNER_STOP_GRACE` is sixty seconds, twice the
+sandboxing Runner's — no longer because the pool is a multiple of one job, but
+because that one request has to reach a Server that may be remote, busy or
+behind a proxy, and a job the Server hands over at the very instant of the stop
+is released rather than sent to the archive and then given back. **Do not delete
+`EXTERNAL_RUNNER_STOP_GRACE`**: a stop that does not fit inside it is a kill,
+which hands nothing back at all.
+
+**One case no grace period reaches**, and it is this one. `update.sh` waits for
+the Server to be **closed** before recreating the containers, and a closed
+Server accepts nothing from a Runner — draining is open to it, closed is not,
+because closed is the level at which a backup may assume nothing is writing. A
+Runner stopped after that hands nothing back and its jobs return on their leases,
+whatever the grace says. The drain is what keeps that set small.
 
 What it loses when it dies is not an evaluation in progress but a list of
 submissions an archive has not answered for yet, and each of those is sent to
