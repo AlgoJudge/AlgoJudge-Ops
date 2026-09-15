@@ -311,13 +311,28 @@ services:
       # the bind mount below, which is why both come from one variable.
       AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-1
 
+      # **The cache, as the daemon sees it, and the same trap as the line
+      # above.** A package is unpacked and the checker it declares is built
+      # once, in the cache, and both are bind-mounted read-only into the
+      # container that judges with them — so this has to be a path the daemon
+      # can open, and it must equal the host side of the bind below. The Runner
+      # checks it at start against a throwaway container and refuses to judge if
+      # it cannot see what it wrote.
+      AJ_Cache__HostPath: ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}
+
       RUST_LOG: ${RUNNER_LOG:-info}
 
     volumes:
       # **The identity key, and losing it costs a re-registration and a manual
       # approval.** A named volume, so it survives `down` and an image change.
       - runner-1-identity:/var/lib/algojudge-runner
-      - runner-cache:/var/cache/algojudge-runner
+      # **A directory the four share, and not a named volume.** 10 GiB, bounded
+      # by the Runner, holding each package it has downloaded with what was
+      # unpacked and built from it. A volume would be simpler and the daemon
+      # cannot open one by path: a judge's container mounts the unpacked package
+      # out of here, so it has to be a directory. One preparation is shared
+      # between all four, under a lock.
+      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
       - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-1:/var/lib/algojudge-runner/work
       # The Runner starts **sibling** containers through the daemon. Job
       # containers never get the socket themselves.
@@ -417,7 +432,7 @@ services:
       AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-2
     volumes:
       - runner-2-identity:/var/lib/algojudge-runner
-      - runner-cache:/var/cache/algojudge-runner
+      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
       - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-2:/var/lib/algojudge-runner/work
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup
@@ -431,7 +446,7 @@ services:
       AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-3
     volumes:
       - runner-3-identity:/var/lib/algojudge-runner
-      - runner-cache:/var/cache/algojudge-runner
+      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
       - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-3:/var/lib/algojudge-runner/work
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup
@@ -445,7 +460,7 @@ services:
       AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-4
     volumes:
       - runner-4-identity:/var/lib/algojudge-runner
-      - runner-cache:/var/cache/algojudge-runner
+      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
       - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-4:/var/lib/algojudge-runner/work
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup
@@ -554,6 +569,5 @@ volumes:
   runner-2-identity:
   runner-3-identity:
   runner-4-identity:
-  runner-cache:              # 10 GiB, bounded by the Runner
   external-runner-identity:
   external-runner-cache:     # 256 MiB, bounded by the image

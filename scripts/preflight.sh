@@ -49,6 +49,31 @@ if runs_service runner-1 runner; then
        against nothing. Write an absolute path."
         fi
 
+        # **The cache, which has a default and so is never empty.** It is read
+        # through `setting` rather than from the environment for exactly that
+        # reason: an installation that never names it still has one, and it is
+        # still a path the daemon has to be able to open — a judge's container
+        # mounts the unpacked package straight out of it.
+        cache=$(setting RUNNER_CACHE_DIR /srv/algojudge/runner-cache)
+        if [ "${cache#/}" = "$cache" ]; then
+            report "RUNNER_CACHE_DIR is '$cache', which is relative. The Runner hands this
+       path to the Docker daemon for every checker it runs, and a path the
+       daemon cannot open becomes an empty directory rather than an error.
+       Write an absolute path."
+        fi
+
+        # **Not under the work directory**, because `scripts/gc.sh` removes
+        # first-level directories there by age — which would take a package out
+        # from under a Runner that is judging with it.
+        case "$cache/" in
+            "${RUNNER_WORK_DIR:-/dev/null}"/*)
+                report "RUNNER_CACHE_DIR ($cache) is inside RUNNER_WORK_DIR. The scheduled
+       clean-up removes directories under the work directory by age, and the
+       cache is not scratch: it would be deleted while a Runner was reading it.
+       Put it somewhere of its own."
+                ;;
+        esac
+
         # **A list of separators is not a list of problem types.** Since
         # 2026-09-04 the Runner refuses to start on one, and `restart:
         # unless-stopped` turns that into a loop nothing here would otherwise
@@ -123,6 +148,25 @@ if runs_service runner-1 runner; then
            sudo chmod 755 $RUNNER_WORK_DIR"
             fi
             MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'rm -f /work/.algojudge-probe' >/dev/null 2>&1 || true
+
+            # **The same two halves for the cache**, and it is the same
+            # arrangement: the Runner writes there as root, and a checker's
+            # container mounts what it prepared read-only and reads it as uid
+            # 65534. Inside this block because it shares the probe image and
+            # the same host, and an installation that starts a Runner always
+            # reaches it — an empty RUNNER_WORK_DIR is reported above.
+            if ! MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$cache:/cache" "$probe_image"                 sh -c 'echo probe > /cache/.algojudge-probe' >/dev/null 2>&1; then
+                report "the Runner cannot write into RUNNER_CACHE_DIR ($cache). It runs as
+       root, so this is a read-only filesystem or a path the daemon cannot open:
+           sudo mkdir -p $cache"
+            elif ! MSYS_NO_PATHCONV=1 docker run --rm -u 65534:65534                 -v "$cache:/cache" "$probe_image"                 sh -c 'cat /cache/.algojudge-probe' >/dev/null 2>&1; then
+                report "a judge's container could not read RUNNER_CACHE_DIR ($cache). The
+       Runner unpacks each package there as root and every checker container
+       reads it back as uid 65534, so the directory has to be searchable and
+       its files readable by others:
+           sudo chmod 755 $cache"
+            fi
+            MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$cache:/cache" "$probe_image"                 sh -c 'rm -f /cache/.algojudge-probe' >/dev/null 2>&1 || true
         fi
 
         # **The cgroup version, which was never checked here at all.** The

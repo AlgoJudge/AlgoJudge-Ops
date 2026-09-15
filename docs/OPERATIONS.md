@@ -316,6 +316,15 @@ an older Server against a newer schema does not start, and the only way back is
 restoring the dump taken immediately before — which loses everything written
 since.
 
+**A rollback past 0.1 leaves the Runner's cache behind, and that is deliberate.**
+A Runner of that generation keeps its entries under two-character shards at the
+top of the directory; a newer one keeps them under `packages/`, where the older
+code never looks. So the older Runner finds nothing, downloads again, and the
+two layouts sit side by side rather than one being handed to the other — which
+would have been every submission failing on a package that could not be opened.
+What is left is dead weight only the newer Runner can see: an installation that
+stays rolled back can empty `RUNNER_CACHE_DIR`, and it costs a download.
+
 ### The Runner during an update
 
 **On `SIGTERM` the Runner gives its job back.** It stops the evaluation it is
@@ -400,11 +409,17 @@ repository's own logs.
 **Never a global prune.** The host may run other things, and
 `docker system prune` does not know that.
 
-**Neither cache volume is swept here**, because neither needs it: the Runner
-bounds `runner-cache` at 10 GiB and the External Runner bounds
-`external-runner-cache` at 256 MiB, both from inside. They are named volumes, so
-they survive `down` and an image change — and deleting either costs a download
-rather than a job.
+**Neither cache is swept here**, because neither needs it: each Runner bounds
+`RUNNER_CACHE_DIR` at 10 GiB and the External Runner bounds
+`external-runner-cache` at 256 MiB, both from inside. Both survive `down` and an
+image change — and deleting either costs a download rather than a job.
+
+**The Runner's is a directory the four share, and holds more than downloads.**
+Each package it has fetched is in there with what was unpacked from it and the
+checker built out of it, prepared once between the four under a lock rather than
+per submission. It is a directory rather than a named volume because the Docker
+daemon has to be able to open it by path: a checker's container mounts the
+unpacked package straight out of it.
 
 **Cgroups are deliberately absent too, and one thing is left on the host by
 design.** A Runner measures from a cgroup named after its key fingerprint —

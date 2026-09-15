@@ -128,6 +128,52 @@ Runner that has already decided an image has no shim goes on failing every job
 against the new one. Measured 2026-09-08: the same image, the correct copy
 pulled, and the verdicts came only after the restart.
 
+## Every job fails with `predates the input arriving as a descriptor`
+
+The Runner says, of one of the four language images:
+
+```
+the /usr/local/bin/aj-shim in ghcr.io/algojudge/lang-gcc:0 predates the input
+arriving as a descriptor, so it cannot judge
+```
+
+**The same cause as the entry above, and the same two-part fix.** A test's input
+is no longer mounted into the container: the Runner reads it into a sealed file
+in memory and hands the descriptor to the shim over a socket. A shim from before
+that would open the socket as though it were a file, fail, and report a run that
+measured nothing — so the Runner refuses the run instead, which is a sentence an
+operator can act on.
+
+```bash
+docker pull ghcr.io/algojudge/lang-gcc:0     # and clang, python, pypy
+docker compose restart runner-1              # every runner-N you run
+```
+
+The restart is not optional, for the reason the entry above gives: an image is
+probed once and the answer is remembered for the life of the process.
+
+## A checker fails on every submission, or judges against nothing
+
+Every submission to a problem whose package brings a checker comes back as an
+infrastructure failure — often worded as though the author's checker did not
+build — or a checker decides against an empty input.
+
+**`RUNNER_CACHE_DIR` is a path the Docker daemon cannot open.** A package is
+unpacked and its checker built once, in the cache, and both are bind-mounted
+into the container that judges with them. The daemon resolves that bind, so the
+directory has to exist on the host and be readable by uid 65534, which is what
+`scripts/preflight.sh` probes:
+
+```bash
+sudo mkdir -p /srv/algojudge/runner-cache
+sudo chmod 755 /srv/algojudge/runner-cache
+./scripts/preflight.sh
+```
+
+A Runner started against a path the daemon cannot open refuses to judge at all
+and says so naming `AJ_Cache__HostPath`, so the case above is the narrower one:
+a directory that exists but is not the one the Runner is writing to.
+
 ## Nothing **external** is being judged
 
 A different list, because the ordinary causes are not the causes here. In order
