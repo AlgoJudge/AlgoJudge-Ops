@@ -177,6 +177,13 @@ daemon, and **a path the daemon cannot open becomes an empty directory rather
 than an error** — every submission then runs against nothing and no test fails
 visibly. `preflight.sh` refuses a relative one for that reason.
 
+**`RUNNER_CACHE_DIR` has a default and the same rule applies to it.** It is
+where the four Runners keep each package they have downloaded, unpacked once and
+built the checker of once, between them; a judge's container mounts it, so the
+daemon has to be able to open it too. Leave it alone unless `/srv` is not where
+this installation keeps its data, and keep it **out of** `RUNNER_WORK_DIR`,
+whose first-level directories the scheduled clean-up removes by age.
+
 **Make it yourself before the first start**, or let Compose make it — either is
 fine now:
 
