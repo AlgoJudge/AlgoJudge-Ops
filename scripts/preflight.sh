@@ -74,6 +74,42 @@ if runs_service runner-1 runner; then
                 ;;
         esac
 
+        # **Lanes against processors, per Runner.** A Runner given fewer
+        # processors than the tests it is told to judge at once refuses to
+        # start, and `restart: unless-stopped` turns that into a loop. The
+        # arithmetic is here rather than in the Runner's own words because the
+        # value an operator has to change is in this file, and because two
+        # Runners can disagree about it while sharing one setting.
+        lanes=$(setting RUNNER_TESTS_AT_ONCE 1)
+        for n in 1 2 3 4; do
+            eval "set_for_runner=\${RUNNER_${n}_CPUSET:-}"
+            [ -n "$set_for_runner" ] || continue
+            case ",$(setting COMPOSE_PROFILES ''),"  in
+                *,runner,*|*,runner-extra,*) ;;
+                *) continue ;;
+            esac
+            # `0-3,8` names five processors; count them the way the kernel
+            # spells them rather than counting commas.
+            processors=$(
+                echo "$set_for_runner" | tr ',' '
+' | while read -r piece; do
+                    case "$piece" in
+                        *-*) first=${piece%%-*}; last=${piece##*-}
+                             echo $((last - first + 1)) ;;
+                        '')  ;;
+                        *)   echo 1 ;;
+                    esac
+                done | awk '{ total += $1 } END { print total + 0 }'
+            )
+            if [ "$processors" -lt "$lanes" ]; then
+                report "RUNNER_${n}_CPUSET names $processors processor(s) and
+       RUNNER_TESTS_AT_ONCE is $lanes. That Runner refuses to start: each test
+       judged at once wants a processor of its own, because two judged runs
+       sharing one spend more processor time on the same work and a time limit
+       is processor time. Widen the cpuset or lower RUNNER_TESTS_AT_ONCE."
+            fi
+        done
+
         # **A list of separators is not a list of problem types.** Since
         # 2026-09-04 the Runner refuses to start on one, and `restart:
         # unless-stopped` turns that into a loop nothing here would otherwise

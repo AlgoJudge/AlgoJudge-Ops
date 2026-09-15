@@ -293,6 +293,15 @@ services:
       # with nobody approving it. Empty means the general pool.
       AJ_Runner__Tags: ${RUNNER_TAGS:-}
 
+      # **How many of one submission's tests this Runner judges at once**, and
+      # every one of them wants a processor of its own out of `cpuset` below.
+      # One -- the default -- judges exactly as every release before 0.1 did.
+      # Above one, a participant waits for the slowest test rather than for all
+      # of them; ask for more than the Runner's `cpuset` names and it refuses to
+      # start, because two judged runs sharing a processor spend more processor
+      # time on the same work and a time limit is processor time.
+      AJ_Runner__TestsAtOnce: ${RUNNER_TESTS_AT_ONCE:-1}
+
       # **The language images, which have no working default here.** Compiled in,
       # the Runner looks for `algojudge/lang-*:local` — images the development
       # flow builds and a fresh host has never heard of. A submission then fails
@@ -405,17 +414,32 @@ services:
     # host's scheduler then places every job, which is the right answer when
     # nobody has divided the machine up.
     #
-    # Set it and the Runner hands that same set to every job container, because a
-    # job container is the daemon's child and inherits no affinity of its own.
-    # **One Runner per physical core, both of that core's threads**: `0,1` here,
-    # `2,3` next door. A core's two threads share their caches, so a job moving
-    # between them costs nothing, and no other Runner is on that core to take its
-    # execution units.
+    # Set it and the Runner hands that set to every job container, because a job
+    # container is the daemon's child and inherits no affinity of its own -- and
+    # cuts it into one lane per test it judges at once, in the order it is
+    # written here.
+    #
+    # **One Runner per group of processors, one lane per processor in the
+    # group.** `0-3` here with `RUNNER_TESTS_AT_ONCE=4`, `4-7` next door: one
+    # submission is then judged four ways and a participant waits for its
+    # slowest test rather than for all of them.
+    #
+    # **A lane wants a processor; a core of its own is a choice on top.** Two
+    # *different* Runners on one core take each other's execution units, and so
+    # do two lanes on the two threads of one core -- a program then spends more
+    # processor time than it should for the same work, and a limit is processor
+    # time. The Runner refuses a width its cpuset cannot give a processor each;
+    # what it cannot see is whether those processors are separate cores, so the
+    # values above buy a lane a core on a host whose eight processors are eight
+    # cores and half a core on one whose eight are four. `.env.example` says how
+    # to spend the same processors as four whole cores instead.
     #
     # **Read the pairs from the machine rather than assuming them.**
     # `/sys/devices/system/cpu/cpu0/topology/thread_siblings_list` names cpu0's
     # partner -- `0-1` on one host and `0,8` on another -- and a list written for
-    # the first is exactly wrong on the second.
+    # the first is exactly wrong on the second. **The order matters here**: the
+    # Runner cuts this list into lanes as it is written, so siblings written
+    # together land in one lane.
     cpuset: ${RUNNER_1_CPUSET:-}
 
     networks:
@@ -426,10 +450,17 @@ services:
   # identity, their scratch and their processors. Everything else is `<<:
   # *runner`, so what is written above governs all four and cannot drift.
   #
-  # **Four is the reference, not a minimum.** It suits a machine with eight
-  # physical cores, leaving four for the Server, the database, the daemon and the
-  # operating system. On a smaller host, run fewer: more Runners than physical
-  # cores does not judge faster and does stop judging accurately.
+  # **Two of them start by default, and the reference is two Runners of four
+  # lanes each** on a machine with eight processors: `RUNNER_1_CPUSET=0-3`,
+  # `RUNNER_2_CPUSET=4-7`, `RUNNER_TESTS_AT_ONCE=4`. That spends the same
+  # processors on one submission at a time instead of four, which is the trade
+  # being made: fewer submissions judged at once, each answered sooner.
+  #
+  # **`runner-3` and `runner-4` are behind the `runner-extra` profile**, for a
+  # host with more processors, or for an installation that would rather judge
+  # four submissions at once than one submission four ways. Add `runner-extra`
+  # to `COMPOSE_PROFILES` and give them cpusets of their own. More Runners than
+  # physical cores does not judge faster and does stop judging accurately.
   runner-2:
     <<: *runner
     environment:
@@ -446,6 +477,7 @@ services:
 
   runner-3:
     <<: *runner
+    profiles: ["runner-extra"]
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-3
@@ -460,6 +492,7 @@ services:
 
   runner-4:
     <<: *runner
+    profiles: ["runner-extra"]
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-4
