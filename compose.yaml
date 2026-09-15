@@ -332,6 +332,12 @@ services:
       # cannot open one by path: a judge's container mounts the unpacked package
       # out of here, so it has to be a directory. One preparation is shared
       # between all four, under a lock.
+      #
+      # **A volume with `subpath` would avoid the host path and is not used.**
+      # It needs Engine 26 / API 1.45, where this stack asks for Compose v2.15
+      # and nothing else, and the container layer is meant to speak to Podman as
+      # well. A directory costs an operator one absolute path and works
+      # everywhere.
       - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
       - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-1:/var/lib/algojudge-runner/work
       # The Runner starts **sibling** containers through the daemon. Job
