@@ -268,11 +268,16 @@ volume was created. That is documented in `INSTALL.md` under *The project name i
 gives.
 
 The other was not documented and is now: **`compose pull` never fetched the four
-language images**, and a Runner pulls one only when the host has none, so a
-toolchain image from a week earlier survived an update and failed every job on a
-missing `aj-shim`. `update.sh` pulls them, and `TROUBLESHOOTING.md` carries the
-symptom — including that the Runner must be restarted afterwards, because it
-probes each image once and remembers.
+language images**, and the Runner of that day pulled one only when the host had
+none, so a toolchain image from a week earlier survived an update and failed
+every job on a missing `aj-shim`. `update.sh` pulls them, `pull.sh` does the
+same on first install, and `TROUBLESHOOTING.md` carries the symptom.
+
+*Both halves of that sentence have since changed in the Runner, on 2026-09-16:
+it fetches all four at start unconditionally and refuses to register if it
+cannot, and what it remembers about an image is filed under the image's id
+rather than its name. The account above is what was found on 2026-09-08 and is
+kept as the finding it was.*
 
 **`update.sh` and `rollback.sh` were then driven for real**, by moving a tag the
 way a release moves one. The update swapped the container, recorded

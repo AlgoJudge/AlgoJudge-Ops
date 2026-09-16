@@ -1,13 +1,17 @@
 # Shortcuts. Everything here is a `docker compose` or a script you can run
 # yourself; nothing is hidden behind it.
 #
-# **`up` runs preflight first**, so the ordinary path is checked whether or not
-# anybody remembers that script exists.
+# **`up` runs preflight and then pull**, so the ordinary path is both checked
+# and supplied whether or not anybody remembers those scripts exist. `pull` is
+# there because the four language images are not services: `docker compose
+# pull` cannot see them, and an installation that never ran `update` therefore
+# had no toolchain at all.
 
-.PHONY: help up down restart logs ps preflight backup restore update rollback gc maintenance-on maintenance-off status check
+.PHONY: help up down restart logs ps preflight pull backup restore update rollback gc maintenance-on maintenance-off status check
 
 help:
-	@echo 'up               preflight, then start what COMPOSE_PROFILES names'
+	@echo 'up               preflight, pull, then start what COMPOSE_PROFILES names'
+	@echo 'pull             every image this installation runs, language images included'
 	@echo 'down             stop everything (volumes are kept)'
 	@echo 'logs             follow the logs'
 	@echo 'ps               what is running, and whether it is healthy'
@@ -22,7 +26,10 @@ help:
 preflight:
 	./scripts/preflight.sh
 
-up: preflight
+pull:
+	./scripts/pull.sh
+
+up: preflight pull
 	docker compose up -d --wait
 
 down:

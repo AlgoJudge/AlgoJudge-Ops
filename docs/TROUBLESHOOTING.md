@@ -119,24 +119,32 @@ measurable, and a language image from before it existed has none. Two things kee
 this quiet, and both are by design:
 
 - **`docker compose pull` does not fetch the language images.** They are not
-  services — they are values the Runner is given — so nothing in the ordinary
-  update path replaces them. `scripts/update.sh` pulls the four by hand for
-  exactly this reason.
-- **The Runner pulls one only when the host has none at all**, and never because
-  a newer one exists. A stale `lang-gcc:0` is used as it is.
+  services — they are values the Runner is given — so nothing Compose does
+  reaches them. `scripts/pull.sh` fetches them, `make up` runs it, and
+  `scripts/update.sh` does the same on the update path.
+- **A Runner from before 2026-09-16 fetched none of them** and used whatever
+  the host happened to have, however old. Since then it fetches all four at
+  start, unconditionally, and refuses to register if it cannot.
 
-The fix is both halves, and the second is the one people miss:
+The fix, on any version:
 
 ```bash
-docker pull ghcr.io/algojudge/lang-gcc:0     # and clang, python, pypy
+./scripts/pull.sh
 docker compose restart runner-1              # every runner-N you run
 ```
 
-**The restart is not optional.** A Runner probes each image once, the first time
-it uses it, and remembers the answer for as long as the process lives — so a
-Runner that has already decided an image has no shim goes on failing every job
-against the new one. Measured 2026-09-08: the same image, the correct copy
-pulled, and the verdicts came only after the restart.
+**Restarting is the simple answer and is never wrong**, and on a current Runner
+it is also what fetches: the images are pulled at start. Pulling by hand works
+too — a running Runner takes up a replaced image without a restart, because
+what it remembers about an image is filed under that image's id, and a fetched
+one has a different id.
+
+*This paragraph said the opposite until 2026-09-16, on a measurement taken on
+2026-09-08 that was correct at the time: the Runner then filed what it
+remembered under the image's **name**, so a republished tag was answered for by
+the image that name used to mean. The keying changed in the Runner; the
+behaviour above is read from that code and has not been re-measured end to end.
+When in doubt, restart — it costs seconds and settles it.*
 
 ## Every job fails with `predates the input arriving as a descriptor`
 
