@@ -60,6 +60,33 @@ ignores it and judges one test at a time, exactly as before.
   An installation below Docker Engine 26 keeps `compose.directories.yaml`, and
   that arrangement is unaffected either way.
 
+## What the next tag changes for the people using it
+
+**The section above is what blocks a tag; this is what a tag changes**, and it
+has to be said out loud on release day rather than discovered by somebody whose
+mark moved. Nothing here stops the release.
+
+- **A submission has to end by itself to be accepted**, since AlgoJudge-Runner
+  #62 on 2026-09-16. A checker or an interactor finishing no longer stops the
+  program: one that prints its answer and keeps writing meets the output limit,
+  one that then waits for input that will never come meets a time limit, and
+  neither is accepted however satisfied the judge was. A judge that **refused**
+  still outranks what stopped the run, so its comment survives.
+
+  **It is a verdict change and it moves marks.** The behaviour it replaces was
+  not one answer: the judge's exit and the output cap are decided in the same
+  loop, so the same submission was `Accepted` on an idle host and `Output limit
+  exceeded` on a busy one — measured at 24% of runs under load, 0% idle. Code
+  that was accepted before a contest may be refused after it, and that is the
+  point rather than a regression, but a participant who re-submits identical
+  code will see it.
+
+  **Who has to do something**: a package whose problems legitimately keep
+  writing after the judge has seen enough — it wants a judge that reads to the
+  end. Most packages do not, and need nothing. `AlgoJudge-Docs` says all of this
+  on `/runner/problem-types`, `/client/manager/packages` and
+  `/client/participant/results`, in both locales where there are two.
+
 ## Eight images, four repositories, and this one last
 
 1. **AlgoJudge-Server** and **AlgoJudge-Client** — independent of each other,
