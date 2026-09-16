@@ -103,10 +103,46 @@ if runs_service runner-1 runner; then
             )
             if [ "$processors" -lt "$lanes" ]; then
                 report "RUNNER_${n}_CPUSET names $processors processor(s) and
-       RUNNER_TESTS_AT_ONCE is $lanes. That Runner refuses to start: each test
-       judged at once wants a processor of its own, because two judged runs
-       sharing one spend more processor time on the same work and a time limit
-       is processor time. Widen the cpuset or lower RUNNER_TESTS_AT_ONCE."
+       RUNNER_TESTS_AT_ONCE is $lanes. That Runner refuses to start: a lane
+       without a processor of its own is two judged runs sharing one, which
+       spends more processor time on the same work and a time limit is
+       processor time. Widen the cpuset or lower RUNNER_TESTS_AT_ONCE."
+            fi
+
+            # **And lanes against cores, which is the number that decides what a
+            # submission is charged.** A processor is the floor the Runner
+            # refuses below; a core is what a lane actually wants, because a
+            # lane holds the judged run, the judge reading it and the measuring
+            # shim. A warning and not a problem, exactly as the Runner treats
+            # it: the installation works either way, and a host may have no
+            # siblings to give.
+            cores=$(
+                for piece in $(echo "$set_for_runner" | tr ',' ' '); do
+                    case "$piece" in
+                        *-*) first=${piece%%-*}; last=${piece##*-}
+                             c=$first
+                             while [ "$c" -le "$last" ]; do
+                                 echo "$c"; c=$((c + 1))
+                             done ;;
+                        *)   echo "$piece" ;;
+                    esac
+                done | while read -r cpu; do
+                    cat "/sys/devices/system/cpu/cpu$cpu/topology/thread_siblings_list" 2>/dev/null
+                done | sort -u | grep -c .
+            )
+            # Unreadable topology -- a virtual machine that publishes none --
+            # counts as nothing to say rather than as a complaint.
+            if [ "${cores:-0}" -gt 0 ] && [ "$cores" -lt "$lanes" ]; then
+                warn "RUNNER_${n}_CPUSET names $processors processor(s) on
+       $cores core(s) and RUNNER_TESTS_AT_ONCE is $lanes, so a lane there holds
+       one thread of a core rather than a core. Measured 2026-09-15 on one
+       submission of 72 tests: 196 ms of processor time a test in lanes of a
+       whole core against 318 ms in lanes of one thread, which put 610 of 864
+       tests over a limit none of them reached at the wider setting -- and a
+       time limit is processor time, so that is correct solutions refused. Per
+       submission the two are the same speed. Set RUNNER_TESTS_AT_ONCE to
+       $cores, or give this Runner both threads of every core it has:
+       \`cat /sys/devices/system/cpu/cpu0/topology/thread_siblings_list\`."
             fi
         done
 
