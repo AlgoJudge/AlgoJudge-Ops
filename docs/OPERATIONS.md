@@ -323,7 +323,17 @@ code never looks. So the older Runner finds nothing, downloads again, and the
 two layouts sit side by side rather than one being handed to the other — which
 would have been every submission failing on a package that could not be opened.
 What is left is dead weight only the newer Runner can see: an installation that
-stays rolled back can empty `RUNNER_CACHE_DIR`, and it costs a download.
+stays rolled back can empty the cache, and it costs a download.
+
+```bash
+docker compose stop runner-1 runner-2
+docker volume rm algojudge_runner-cache
+docker compose start runner-1 runner-2
+```
+
+The volume comes back on the next start, empty. Stop the Runners first: the
+volume is in use while they are up, and `volume rm` refuses rather than
+half-doing it.
 
 ### The Runner during an update
 
@@ -433,24 +443,38 @@ into the package and paid by every submission after it.
 ./scripts/gc.sh
 ```
 
-Work directories older than `GC_TMP_RETENTION_DAYS`, exited job containers
+Scratch directories older than `GC_TMP_RETENTION_DAYS`, exited job containers
 nothing will collect, images **filtered to this project's label**, and this
 repository's own logs.
+
+**The scratch is swept from inside a container**, because each Runner's is a
+volume with no path this host can open. `gc.sh` reads the volume off the
+running container rather than naming it, so it needs no guess about the project
+name and skips a Runner this host does not run; with the directories overlay it
+sweeps the host directories exactly as it always did. **Strays are normal, not
+a defect** — a Runner killed mid-evaluation cannot tidy up after itself, and
+nothing else removes what it left: a Runner empties the one directory it is
+about to use and no other, and the job it dropped is usually re-claimed by a
+different Runner whose scratch is somewhere else.
 
 **Never a global prune.** The host may run other things, and
 `docker system prune` does not know that.
 
 **Neither cache is swept here**, because neither needs it: each Runner bounds
-`RUNNER_CACHE_DIR` at 10 GiB and the External Runner bounds
+`algojudge_runner-cache` at 10 GiB and the External Runner bounds
 `external-runner-cache` at 256 MiB, both from inside. Both survive `down` and an
-image change — and deleting either costs a download rather than a job.
+image change — but **not `down -v`**, which removes them with everything else,
+and losing either costs a download rather than a job.
 
-**The Runner's is a directory every Runner on the host shares, and holds more
+**The Runner's is one volume every Runner on the host shares, and holds more
 than downloads.** Each package it has fetched is in there with what was unpacked
 from it and the checker built out of it, prepared once between them under a lock
-rather than per submission. It is a directory rather than a named volume
-because the Docker daemon has to be able to open it by path: a checker's
-container mounts the unpacked package straight out of it.
+rather than per submission. It was a host directory until 2026-09-16, because
+the Docker daemon had to be able to open it by path — a checker's container
+mounts the unpacked package straight out of it. A volume's subdirectory travels
+as `subpath` now, which is why it is a volume again, and why a host that runs
+Runners needs Docker Engine 26 or Podman 5. Below either, `docs/INSTALL.md`
+describes the overlay that keeps the directories.
 
 **Cgroups are deliberately absent too, and one thing is left on the host by
 design.** A Runner measures from a cgroup named after its key fingerprint —

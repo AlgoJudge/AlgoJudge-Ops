@@ -313,21 +313,22 @@ services:
 
       AJ_Work__Path: /var/lib/algojudge-runner/work
 
-      # **As the *daemon* sees it, not as the Runner does.** The Runner asks the
-      # daemon to mount this into each job container, and a path the daemon
-      # cannot open produces an **empty directory** rather than an error — so
-      # every job silently runs against nothing. It must equal the host side of
-      # the bind mount below, which is why both come from one variable.
-      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-1
+      # **One volume per Runner, and never one between two.** An expired lease
+      # may be re-issued while the first Runner is still working, and a scratch
+      # is emptied by whoever claims the job — so two Runners sharing this would
+      # delete each other's work in progress. Named here rather than as a path
+      # for the same reason as the cache above: one spelling instead of two.
+      AJ_Work__Volume: runner-1-work
 
-      # **The cache, as the daemon sees it, and the same trap as the line
-      # above.** A package is unpacked and the checker it declares is built
-      # once, in the cache, and both are bind-mounted read-only into the
-      # container that judges with them — so this has to be a path the daemon
-      # can open, and it must equal the host side of the bind below. The Runner
-      # checks it at start against a throwaway container and refuses to judge if
+      # **The cache, by the name the daemon knows it by.** A package is unpacked
+      # and the checker it declares is built once, in the cache, and both are
+      # mounted read-only into the container that judges with them — so the
+      # daemon has to be able to reach it. Named, it is reached by name and the
+      # package travels as `subpath`, which is why there is no second spelling
+      # of this directory to keep in step with the mount below. The Runner still
+      # checks at start, against a throwaway container, and refuses to judge if
       # it cannot see what it wrote.
-      AJ_Cache__HostPath: ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}
+      AJ_Cache__Volume: runner-cache
 
       RUST_LOG: ${RUNNER_LOG:-info}
 
@@ -335,20 +336,20 @@ services:
       # **The identity key, and losing it costs a re-registration and a manual
       # approval.** A named volume, so it survives `down` and an image change.
       - runner-1-identity:/var/lib/algojudge-runner
-      # **A directory the four share, and not a named volume.** 10 GiB, bounded
-      # by the Runner, holding each package it has downloaded with what was
-      # unpacked and built from it. A volume would be simpler and the daemon
-      # cannot open one by path: a judge's container mounts the unpacked package
-      # out of here, so it has to be a directory. One preparation is shared
-      # between all four, under a lock.
+      # **A volume the four share.** 10 GiB, bounded by the Runner, holding each
+      # package it has downloaded with what was unpacked and built from it. One
+      # preparation is shared between all four, under a lock.
       #
-      # **A volume with `subpath` would avoid the host path and is not used.**
-      # It needs Engine 26 / API 1.45, where this stack asks for Compose v2.15
-      # and nothing else, and the container layer is meant to speak to Podman as
-      # well. A directory costs an operator one absolute path and works
-      # everywhere.
-      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
-      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-1:/var/lib/algojudge-runner/work
+      # **It was a host directory until 2026-09-16, and the reason it could not
+      # be a volume was real.** A judge's container mounts the unpacked package
+      # out of here, and the daemon could not open a volume *by path* — so the
+      # cache had to be a directory both this Runner and the daemon could name.
+      # A volume's subdirectory travels as `subpath` now, which needs Engine 26
+      # / API 1.45 (April 2024) and, on Podman, 5.x. An installation below
+      # either keeps the directories: see `compose.directories.yaml`, which is
+      # that arrangement unchanged.
+      - runner-cache:/var/cache/algojudge-runner
+      - runner-1-work:/var/lib/algojudge-runner/work
       # The Runner starts **sibling** containers through the daemon. Job
       # containers never get the socket themselves.
       - /var/run/docker.sock:/var/run/docker.sock
@@ -466,11 +467,11 @@ services:
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-2
-      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-2
+      AJ_Work__Volume: runner-2-work
     volumes:
       - runner-2-identity:/var/lib/algojudge-runner
-      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
-      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-2:/var/lib/algojudge-runner/work
+      - runner-cache:/var/cache/algojudge-runner
+      - runner-2-work:/var/lib/algojudge-runner/work
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup
     cpuset: ${RUNNER_2_CPUSET:-}
@@ -481,11 +482,11 @@ services:
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-3
-      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-3
+      AJ_Work__Volume: runner-3-work
     volumes:
       - runner-3-identity:/var/lib/algojudge-runner
-      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
-      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-3:/var/lib/algojudge-runner/work
+      - runner-cache:/var/cache/algojudge-runner
+      - runner-3-work:/var/lib/algojudge-runner/work
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup
     cpuset: ${RUNNER_3_CPUSET:-}
@@ -496,11 +497,11 @@ services:
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-4
-      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-4
+      AJ_Work__Volume: runner-4-work
     volumes:
       - runner-4-identity:/var/lib/algojudge-runner
-      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
-      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required and must be an absolute host path — see .env.example}/runner-4:/var/lib/algojudge-runner/work
+      - runner-cache:/var/cache/algojudge-runner
+      - runner-4-work:/var/lib/algojudge-runner/work
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup
     cpuset: ${RUNNER_4_CPUSET:-}
@@ -608,5 +609,15 @@ volumes:
   runner-2-identity:
   runner-3-identity:
   runner-4-identity:
+  # **What the four share**: one download, one unpacking, one built judge, under
+  # a lock. Bounded at 10 GiB by the Runner itself, from inside.
+  runner-cache:
+  # **And what none of them shares.** A scratch is emptied by whoever claims the
+  # job, and an expired lease may be re-issued while the first Runner is still
+  # working -- so one between two Runners is one deleting the other's work.
+  runner-1-work:
+  runner-2-work:
+  runner-3-work:
+  runner-4-work:
   external-runner-identity:
   external-runner-cache:     # 256 MiB, bounded by the image

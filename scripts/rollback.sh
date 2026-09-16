@@ -125,9 +125,18 @@ $from_update || "$ROOT/scripts/maintenance.sh" on "rollback" --wait-closed || tr
 # `--remove-orphans` on this very line removes its container: an object store, a
 # second Runner, whatever that installation added. `update.sh` starts the stack
 # with a bare `compose up`, and this is now the same.
+#
+# **`compose.override.yaml` has to be named as well**, because setting
+# `COMPOSE_FILE` at all is what stops Compose reading it by itself. It is not
+# only somebody's extra service now: `compose.directories.yaml` is copied to it
+# by an installation whose daemon cannot mount a volume's subdirectory, and
+# dropping it here would start the Runners on empty volumes instead of the host
+# directories holding everything they have prepared.
 log "starting the recorded images"
 if ! (
-    COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:$override"
+    base=compose.yaml
+    [ -f "$ROOT/compose.override.yaml" ] && base="compose.yaml:compose.override.yaml"
+    COMPOSE_FILE="${COMPOSE_FILE:-$base}:$override"
     export COMPOSE_FILE
     compose up -d --remove-orphans
 ); then
