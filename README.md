@@ -45,14 +45,17 @@ other.
 | `cron/` | the suggested schedule, installed only if you ask |
 | `docs/` | [INSTALL](docs/INSTALL.md), [OPERATIONS](docs/OPERATIONS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) |
 
-**Seven profile names, nine services.** `data`, `app`, `server`, `client`,
-`edge`, `runner` and `external-runner` — the Server and the Client each carry
-two, which is what lets one half be brought up on its own. The nine are
-`postgres`, `server`, `client`, `nginx`, `external-runner` and a fleet of four:
-`runner-1` to `runner-4`, one image and four identities. **Four is the reference,
-not a minimum** — it suits eight physical cores and leaves four for everything
-else; on a smaller host run fewer, because more Runners than cores does not judge
-faster and does stop judging accurately.
+**Eight profile names, nine services.** `data`, `app`, `server`, `client`,
+`edge`, `runner`, `runner-extra` and `external-runner` — the Server and the
+Client each carry two, which is what lets one half be brought up on its own. The
+nine are `postgres`, `server`, `client`, `nginx`, `external-runner` and a fleet
+of four: `runner-1` to `runner-4`, one image and four identities. **`runner`
+starts two of them and `runner-extra` the other two.** The reference is two
+Runners judging four of one submission's tests at once, on a machine with eight
+processors: a submission is answered in the time its slowest test takes rather
+than in the sum of them. More judged runs at once than the host has physical
+cores does not judge faster and does stop judging accurately, so on a smaller
+host run narrower or fewer — `docs/INSTALL.md` has the arithmetic.
 
 ## Quick start
 

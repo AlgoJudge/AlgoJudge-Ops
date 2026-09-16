@@ -178,11 +178,12 @@ than an error** — every submission then runs against nothing and no test fails
 visibly. `preflight.sh` refuses a relative one for that reason.
 
 **`RUNNER_CACHE_DIR` has a default and the same rule applies to it.** It is
-where the four Runners keep each package they have downloaded, unpacked once and
-built the checker of once, between them; a judge's container mounts it, so the
-daemon has to be able to open it too. Leave it alone unless `/srv` is not where
-this installation keeps its data, and keep it **out of** `RUNNER_WORK_DIR`,
-whose first-level directories the scheduled clean-up removes by age.
+where this host's Runners keep each package they have downloaded, unpacked once
+and built the checker of once, between them; a judge's container mounts it, so
+the daemon has to be able to open it too. Leave it alone unless `/srv` is not
+where this installation keeps its data, and keep it **out of**
+`RUNNER_WORK_DIR`, whose first-level directories the scheduled clean-up removes
+by age.
 
 **Make it yourself before the first start**, or let Compose make it — either is
 fine now:
@@ -263,36 +264,96 @@ answers on the Server's own loopback interface, and a request through nginx —
 or through the published `127.0.0.1:8080` — arrives as the bridge gateway and
 gets a 404. That is measured behaviour, not a guess.
 
-## How many Runners
+## How many Runners, and how wide
 
-**Four, on a host with eight physical cores** — which is what the `runner`
-profile starts and what `.env.example` is written for. One Runner judges one
-submission at a time, so the count is how many submissions are judged at once,
-and the other four cores are for the Server, the database, the daemon and the
-operating system.
+**Two, judging two of one submission's tests at a time each** — which is what
+the `runner` profile starts and what `.env.example` is written for, on a machine
+whose eight processors are four cores of two threads:
 
-**More Runners than physical cores does not judge faster, and it stops judging
-accurately.** Measured 2026-09-03 on an eight-core host: twelve Runners against
-a hundred and fifty submissions returned **fifteen of them as `Time limit
-exceeded` when they were inside their limits**, including solutions known to be
-correct. Two things cause it and both come from processors being oversubscribed:
-a program that is not scheduled still runs out of wall clock, and a program
-sharing a core with another spends more processor time on the same work.
+```ini
+RUNNER_1_CPUSET=0,1,2,3
+RUNNER_2_CPUSET=4,5,6,7
+RUNNER_TESTS_AT_ONCE=2
+```
 
-So the ceiling is a rule about correctness:
+**A lane wants a whole core, and the width follows from that** rather than from
+the processor count. Measured 2026-09-15 on one submission of 72 tests: 196 ms a
+test in lanes of a core against 318 ms in lanes of a thread, which put 610 of 864
+tests over a limit none of them reached at the wider setting. A time limit is
+processor time, so that is correct solutions refused. Per submission the two are
+the same speed — 11.2 s against 12.5 s — so the thin arrangement buys throughput
+and pays for it in the verdicts. The Runner warns at start, once per lane that
+holds a thread whose sibling went elsewhere.
 
-| Physical cores | Runners |
-|---|---|
-| 4 | 2 |
-| 8 | **4** |
-| 16 | 8 |
+A Runner judges one submission at a time, so the count of Runners is how many
+submissions are judged at once. **`RUNNER_TESTS_AT_ONCE` is how many of that
+submission's tests it judges together**, each in a **lane** — a piece of the
+Runner's `cpuset` with a measurement home of its own — so a participant waits
+for the slowest of the tests running together rather than for the sum of them.
+The two settings spend the same processors: two Runners of four lanes answer one
+submission sooner, four Runners of one lane answer four submissions at once.
 
-`lscpu` says how many there are — *Core(s) per socket* times *Socket(s)*, which
-is **not** the CPU count when a core carries two threads.
+**`runner` starts `runner-1` and `runner-2`; `runner-3` and `runner-4` are
+behind `runner-extra`.** Add that profile to `COMPOSE_PROFILES` and give the two
+of them cpusets of their own, on a host with the processors to spare.
 
-To run fewer, remove the services you do not want from `compose.yaml` and leave
-their `RUNNER_*_CPUSET` unset. To pin them, see `.env.example`, which explains
-how to read a core's threads off the machine rather than guessing them.
+**The rule for dividing a machine is one Runner per group of processors, and one
+lane per processor in the group.** A lane wants a processor of its own, and the
+Runner refuses a width its cpuset cannot give one each.
+
+**Whether a lane also gets a *core* of its own is your choice, and the Runner
+cannot check that half.** Two different Runners on one core take each other's
+execution units, and so do two lanes on the two threads of one core: the program
+then spends more processor time on the same work, and a limit is processor time.
+The values above divide processors, so on a host whose eight are eight cores
+every lane has one, and on a host whose eight are four cores with two threads
+every core carries two lanes — a submission answered sooner, at a real cost in
+the number its verdict is decided by.
+
+To give every lane a core instead, write the sibling pairs next to each other
+and let the cut fall between them: the Runner cuts a cpuset into lanes **in the
+order it is written**, so `RUNNER_1_CPUSET=0,8,1,9,2,10,3,11` at a width of four
+is four lanes of one core each where cpu0's partner is cpu8.
+`cat /sys/devices/system/cpu/cpu0/topology/thread_siblings_list` says which it
+is here — `0-1` on one kind of host, `0,8` on another — and a list written for
+the first is exactly wrong on the second.
+
+**More judged runs at once than the host has physical cores does not judge
+faster, and it stops judging accurately.** Measured 2026-09-03 on an eight-core
+host: twelve Runners against a hundred and fifty submissions returned **fifteen
+of them as `Time limit exceeded` when they were inside their limits**, including
+solutions known to be correct. Two things cause it and both come from processors
+being oversubscribed: a program that is not scheduled still runs out of wall
+clock, and a program sharing a core with another spends more processor time on
+the same work. **Lanes count in that ceiling exactly as Runners do** — twelve
+Runners of one lane and three Runners of four are the same twelve judged runs.
+
+So the ceiling is a rule about correctness, and what it counts is the lanes:
+
+| Physical cores | Runners | `RUNNER_TESTS_AT_ONCE` |
+|---|---|---|
+| 4 | 1 | 4 |
+| 8 | **2** | **4** |
+| 16 | 4, with `runner-extra` | 4 |
+
+`lscpu` says how many processors there are, and *Core(s) per socket* times
+*Socket(s)* how many physical cores — which is **not** the CPU count when a core
+carries two threads.
+
+**A cpuset confines the Runners and reserves nothing for anybody else.** The
+Server, the database and the daemon are unpinned, and the host places them where
+it likes — including on the processors a Runner is judging on. Where judging
+must not crowd them, give the Runners narrower sets, and lower
+`RUNNER_TESTS_AT_ONCE` with them: a Runner asked for more lanes than its cpuset
+names refuses to start.
+
+**A width costs memory as well as processors** — about 1.3 GiB per Runner at
+four lanes on 256 MiB problems, before the inputs. `docs/OPERATIONS.md` breaks
+that down under *What a Runner holds at once*.
+
+To run one Runner rather than two, remove `runner-2` from `compose.yaml` and
+clear `RUNNER_2_CPUSET`: `preflight.sh` counts a cpuset against the width
+whether or not a service is still reading it.
 
 ### What a submission costs, and why some problems cost twice as much
 
@@ -303,11 +364,17 @@ in it. A problem with 148 tests is 148 container starts for every submission,
 which is why the count of tests, and not the difficulty, decides how long a
 submission takes.
 
+**A lane is what buys some of that back.** A Runner of four lanes has four of
+those starts in flight at once, so the submission is answered in the time its
+slowest lane takes rather than in the sum of its tests. It is the same work on
+the same processors — what changes is how long one participant waits for it.
+
 **A problem whose answers are judged by a program is two containers per test**,
 not one: the submission runs, then the package's own checker runs beside it to
-say whether the answer is right. On such a problem a Runner gets through about
-half as many submissions in the same time. Any problem type that has to run a
-second program alongside the submission has the same shape.
+say whether the answer is right — in the **same lane**, so a width does not
+change that ratio. On such a problem a Runner gets through about half as many
+submissions in the same time. Any problem type that has to run a second program
+alongside the submission has the same shape.
 
 Nothing here needs configuring. It is worth knowing because two installations
 with the same hardware and the same number of Runners can differ by a factor of
@@ -319,10 +386,11 @@ two in how fast a contest is judged, and the difference is in the problems.
 timeout; nothing is judged until an administrator approves it, which is what
 stops somebody attaching a machine of their own to your installation.
 
-In the panel: **Runners**, and approve each of the four that appeared. Their
-logs say `waiting: this Runner has not been approved yet` until you do, and an
-unapproved Runner is simply idle — the others carry the queue, so a forgotten
-approval shows up as a slow installation rather than as an error.
+In the panel: **Runners**, and approve each of the two that appeared — four,
+with `runner-extra`. Their logs say `waiting: this Runner has not been approved
+yet` until you do, and an unapproved Runner is simply idle — the others carry
+the queue, so a forgotten approval shows up as a slow installation rather than
+as an error.
 
 Afterwards, submit something and watch it get a verdict. Until that has happened
 once, the installation is not known to work.
@@ -413,20 +481,20 @@ clones this repository and runs `COMPOSE_PROFILES=runner` with
 SERVER_URL=https://your.domain
 RUNNER_NAME_PREFIX=lab-a       # different on every host
 RUNNER_WORK_DIR=/srv/algojudge/runner-work
-RUNNER_1_CPUSET=0,1            # one Runner per physical core
-RUNNER_2_CPUSET=2,3
-RUNNER_3_CPUSET=4,5
-RUNNER_4_CPUSET=6,7
+RUNNER_1_CPUSET=0,1,2,3        # one Runner per group of cores,
+RUNNER_2_CPUSET=4,5,6,7        # one lane per core in the group
+RUNNER_TESTS_AT_ONCE=2
 ```
 
-**The profile starts four Runners**, named `lab-a-1` to `lab-a-4` here. The
-prefix has to differ per host, or two machines' Runners appear in the panel
-under one set of names. On a host with fewer than eight physical cores, run
-fewer: see *How many Runners* above.
+**The profile starts two Runners**, named `lab-a-1` and `lab-a-2` here;
+`runner-extra` adds `lab-a-3` and `lab-a-4` on a host with the processors for
+them. The prefix has to differ per host, or two machines' Runners appear in the
+panel under one set of names. On a host with fewer physical cores, run narrower
+or fewer: see *How many Runners, and how wide* above.
 
 The Runner opens every connection itself — it needs no inbound port and works
 from behind a domestic router. Each one registers separately and needs its own
-approval, so a four-Runner host is four approvals.
+approval, so a two-Runner host is two approvals.
 
 **This is the recommended arrangement for a public installation.** In T1 the
 Runner sits on the same host as the database, and access to the Docker socket is

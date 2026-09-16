@@ -234,7 +234,7 @@ and **none of them can be reached with the values this stack ships** — they ar
 what a `.env` of your own can produce.
 
 ```bash
-docker compose logs runner | tail -5
+docker compose logs runner-1 | tail -5
 docker compose logs external-runner | tail -5
 ```
 
@@ -263,6 +263,38 @@ docker compose logs external-runner | tail -5
 
 This stack does not offer the four external intervals in `.env.example` for
 exactly this reason; the image's defaults satisfy all of it.
+
+## A Runner refuses to start and names `AJ_Runner__TestsAtOnce`
+
+More lanes than processors. A Runner counts the processors in its `cpuset`
+against the tests it is told to judge at once, and refuses while reading its
+configuration — before it registers, before it claims anything — which
+`restart: unless-stopped` turns into a restart every few seconds:
+
+```bash
+docker compose logs runner-1 | tail -5
+```
+
+The refusal names `AJ_Runner__TestsAtOnce` and the set it read. In `.env` those
+are `RUNNER_TESTS_AT_ONCE` and that Runner's `RUNNER_n_CPUSET`: widen the cpuset
+or lower the width. **The width is one value for every Runner** — `compose.yaml`
+passes `RUNNER_TESTS_AT_ONCE` to all four services — so one narrow
+`RUNNER_2_CPUSET` is a loop on `runner-2` while `runner-1` judges perfectly.
+
+**A Runner with no cpuset reads the whole machine**, which is how this reaches a
+host nobody thought of as small: a width of four on a machine with two
+processors is refused whether the set is narrow or absent, and `runner-3` and
+`runner-4` ship unpinned. `0-3`, `4-7` and a width of four satisfy it on a
+machine with eight processors; a smaller host needs both changed.
+
+It refuses rather than judging slowly because **a time limit is processor
+time**. Two judged runs sharing one processor spend more of it on the same work,
+so correct solutions would come back `Time limit exceeded` with nothing in the
+verdict saying why.
+
+`./scripts/preflight.sh` reports it per Runner before anything starts, and `make
+up` runs it first. What it cannot see is the unpinned case above: it checks the
+Runners that name a cpuset.
 
 ## The archive says the account does not exist
 
@@ -324,7 +356,7 @@ started under. A Runner that cannot read one refuses to start rather than judge
 without it, so this is a startup message and not a per-job one:
 
 ```bash
-docker compose logs runner | head -40
+docker compose logs runner-1 | head -40
 ```
 
 Three things it can be, and `preflight.sh` catches the first two before `make
@@ -343,9 +375,10 @@ and is not needed.
 ## The verdicts are right but no memory is reported
 
 Only on a host using the **`systemd`** cgroup driver, and the Runner says so at
-`ERROR` on every start. One slice serves every run there, so a per-run peak is
-taken by resetting `memory.peak` — a kernel interface that arrived in **Linux
-6.8**. Processor time is unaffected, so every verdict stands.
+`ERROR` on every start. One slice serves every run in a lane there, so a
+per-run peak is taken by resetting `memory.peak` — a kernel interface that
+arrived in **Linux 6.8**. Processor time is unaffected, so every verdict
+stands.
 
 ```bash
 uname -r

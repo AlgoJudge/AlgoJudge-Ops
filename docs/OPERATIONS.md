@@ -396,6 +396,37 @@ submissions an archive has not answered for yet, and each of those is sent to
 that archive a second time when the job is requeued. The drain is the answer
 there too, and the paragraph under *Maintenance* is the one to read first.
 
+## What a Runner holds at once
+
+**`RUNNER_TESTS_AT_ONCE` is how many of one submission's tests a Runner judges
+together**, each in a lane of its own — a piece of the processors that Runner
+was given, with a measurement home of its own. It buys latency on a single
+submission and nothing else: two Runners of four lanes judge two submissions at
+once, four Runners of one lane judge four, and `docs/INSTALL.md` under *How many
+Runners, and how wide* is where that trade is made.
+
+**A lane is a set of live containers, so a width multiplies memory.** Per lane:
+one judged container at the problem's memory limit plus 64 MiB, one checker or
+interactor container at 256 MiB, and one sealed copy of the test's input in the
+Runner's own memory. Four lanes on 256 MiB problems is about **1.3 GiB for one
+Runner** before inputs, and the reference deployment puts two such Runners on
+one host. The two builds are outside all of it — the submission's compile and
+the package's judge get the whole of what the Runner was given, not a lane.
+
+**A lane wants a processor of its own.** A Runner asked for more lanes than its
+`RUNNER_n_CPUSET` names refuses to start, naming `AJ_Runner__TestsAtOnce` and
+the set it read, because two judged runs sharing a processor spend more
+processor time on the same work and a time limit is processor time.
+`scripts/preflight.sh` reports it before a first start;
+`docs/TROUBLESHOOTING.md` has the restart loop it becomes when nobody does.
+
+**A width changes no verdict.** Outcomes are sorted back into test order before
+they are scored, so the verdict, the score and the order of the table a
+participant reads are the same at any width. Trials are unaffected as well: a
+package's limits are derived one test at a time whatever the width says, because
+a limit inflated by contention a Runner inflicted on itself would be written
+into the package and paid by every submission after it.
+
 ## Garbage collection
 
 ```bash
@@ -414,27 +445,34 @@ repository's own logs.
 `external-runner-cache` at 256 MiB, both from inside. Both survive `down` and an
 image change — and deleting either costs a download rather than a job.
 
-**The Runner's is a directory the four share, and holds more than downloads.**
-Each package it has fetched is in there with what was unpacked from it and the
-checker built out of it, prepared once between the four under a lock rather than
-per submission. It is a directory rather than a named volume because the Docker
-daemon has to be able to open it by path: a checker's container mounts the
-unpacked package straight out of it.
+**The Runner's is a directory every Runner on the host shares, and holds more
+than downloads.** Each package it has fetched is in there with what was unpacked
+from it and the checker built out of it, prepared once between them under a lock
+rather than per submission. It is a directory rather than a named volume
+because the Docker daemon has to be able to open it by path: a checker's
+container mounts the unpacked package straight out of it.
 
 **Cgroups are deliberately absent too, and one thing is left on the host by
 design.** A Runner measures from a cgroup named after its key fingerprint —
 under the `systemd` driver a slice, `algojudge-<fingerprint>.slice`, under
-`cgroupfs` a directory. **It is not removed when the Runner stops**, and the
-Runner cannot remove it: `rmdir` on a live slice is undone by systemd, and
-stopping the unit needs a D-Bus connection the Runner deliberately does not
-hold.
+`cgroupfs` a directory. **Under `systemd` that is one slice per lane**: a
+reading there is a difference taken across the slice and only one run may be in
+one at a time, so lane zero carries the name above and its siblings are
+`algojudge-<fingerprint>_l1.slice` upwards — an underscore, because a dash in a
+systemd unit name is a level of nesting. Under `cgroupfs` every run has a cgroup
+of its own whatever the width. **None of them is removed when the Runner
+stops**, and the Runner cannot remove them: `rmdir` on a live slice is undone by
+systemd, and stopping the unit needs a D-Bus connection the Runner deliberately
+does not hold.
 
-What that costs is **one empty slice per Runner identity that has judged
-something** — measured 2026-09-03, and it is one rather than many for a reason
-worth knowing: the slice comes into being only when a container is first started
-under it, so a Runner that registered and waited for approval leaves nothing. It
-grows only when identities are recreated, which is a development habit
-(`down -v` destroys the identity volume) rather than an installation's.
+What that costs is **one empty slice per lane of every Runner identity that has
+judged something** — measured 2026-09-03 on Runners of one lane apiece, and it
+is one per lane rather than one per job for a reason worth knowing: the slice
+comes into being only when a container is first started under it, so a Runner
+that registered and waited for approval leaves nothing, and neither does a lane
+that never took a test. The count grows when identities are recreated, which is
+a development habit (`down -v` destroys the identity volume) rather than an
+installation's.
 
 An operator who wants them gone stops them by hand, and a reboot clears them:
 
