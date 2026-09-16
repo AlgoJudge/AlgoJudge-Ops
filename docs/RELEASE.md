@@ -34,6 +34,32 @@ one that wants to decide every version writes `0.1.0`.
 stack pointed at `0` never sees it; testing one means writing the full version
 into `.env`.
 
+## What `main` already needs that `0` does not yet carry
+
+**This is not a general warning; it is a list, and it has to be emptied before
+the next tag.** `main` here runs ahead of the published images on purpose, so
+a setting can exist in `compose.yaml` before the image that reads it ships. Most
+of that is harmless — a Runner that does not know `AJ_Runner__TestsAtOnce`
+ignores it and judges one test at a time, exactly as before.
+
+**One entry is not harmless**, and it is why this section exists:
+
+- **The Runners' cache and scratch are volumes** since 2026-09-16, named in
+  `AJ_Cache__Volume` and `AJ_Work__Volume`. A Runner image that does not read
+  those keys ignores them, falls back to `AJ_Cache__HostPath`, and hands the
+  daemon a **container** path — which becomes an empty directory rather than
+  an error, so every submission is judged against nothing and no test fails
+  visibly. **`RUNNER_TAG=0` must resolve to a Runner carrying that support
+  before this stack is tagged**, which means releasing AlgoJudge-Runner first
+  and checking the image, not the commit:
+
+  ```bash
+  docker run --rm ghcr.io/algojudge/algojudge-runner:0 --help 2>&1 | grep -i volume
+  ```
+
+  An installation below Docker Engine 26 keeps `compose.directories.yaml`, and
+  that arrangement is unaffected either way.
+
 ## Eight images, four repositories, and this one last
 
 1. **AlgoJudge-Server** and **AlgoJudge-Client** — independent of each other,
