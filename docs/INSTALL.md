@@ -20,6 +20,17 @@ From an empty directory to an installation that judges a submission.
   used by `install.sh` and `update.sh`, needs 2.1.1. Nothing here uses the
   `env_file:` form that would ask for 2.24 — every value is passed through
   `environment:`.
+
+  **On a host that runs Runners, the engine itself must be 26 or later**
+  (Podman 5 or later), which is April 2024. A package is unpacked once into the
+  volume the Runners share and each judged container mounts its subdirectory
+  out of there, which is a `subpath` mount and arrived in Engine 26 / API 1.45.
+  An older daemon cannot express it, and the Runner refuses to judge rather
+  than judge against an empty directory. **An installation below that floor is
+  still supported** and keeps the host directories this stack used until
+  2026-09-16: see
+  [Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
+  Nothing else in the stack needs 26, so an application host is unaffected.
 - **The cgroup tree, and no daemon reconfiguration.** The stack measures a
   submission's processor time and peak memory from a cgroup, because neither is
   available any other way: a container's own cgroup does not outlive it, and the
@@ -87,6 +98,13 @@ From an empty directory to an installation that judges a submission.
 - **Disk for backups**, ideally on a **different filesystem** from the
   PostgreSQL volume. On one filesystem no reserve setting can guarantee that a
   backup will not starve the database it is backing up.
+- **Disk where Docker keeps its volumes**, on a host that runs Runners. Every
+  byte the Runners hold lives there rather than under a path you chose —
+  usually `/var/lib/docker/volumes` — and the shared package cache is the big
+  one, bounded by the Runner at **10 GiB**; each Runner's scratch is a
+  submission at a time. On a host whose `/var` is small and whose `/srv` is
+  not, either move Docker's data root or keep the host directories: see
+  [Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
 - **A bounded container log driver is not a host requirement.** `compose.yaml`
   sets `logging:` on every service itself — Docker's `local` driver, bounded by
   `LOG_MAX_SIZE` and `LOG_MAX_FILES` in `.env` — so the stack does not depend on
@@ -162,42 +180,73 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-**Three values have no default** and the stack will not start without them.
+**Two values have no default** and the stack will not start without them.
 `.env.example` explains each where it sits; in short:
 
 ```ini
 AJ_ADMIN_TOKEN=          # openssl rand -base64 36
 POSTGRES_PASSWORD=       # openssl rand -base64 36, a different one
-RUNNER_WORK_DIR=         # an ABSOLUTE host path, e.g. /srv/algojudge/runner-work
-                         # make it and give it to uid 65532 — see below
 ```
 
-`RUNNER_WORK_DIR` must be absolute because the Runner hands it to the Docker
-daemon, and **a path the daemon cannot open becomes an empty directory rather
-than an error** — every submission then runs against nothing and no test fails
-visibly. `preflight.sh` refuses a relative one for that reason.
+**There is no third.** `RUNNER_WORK_DIR` was one until 2026-09-16, when the
+Runners' cache and scratch became Docker volumes: there is no host path to
+choose any more, and nothing to create or permission before the first start.
 
-**`RUNNER_CACHE_DIR` has a default and the same rule applies to it.** It is
-where this host's Runners keep each package they have downloaded, unpacked once
-and built the checker of once, between them; a judge's container mounts it, so
-the daemon has to be able to open it too. Leave it alone unless `/srv` is not
-where this installation keeps its data, and keep it **out of**
-`RUNNER_WORK_DIR`, whose first-level directories the scheduled clean-up removes
-by age.
+## Where the Runners keep their bytes
 
-**Make it yourself before the first start**, or let Compose make it — either is
-fine now:
+Each Runner is given **volumes**, and this is the whole of it:
+
+| | |
+|---|---|
+| `algojudge_runner-cache` | every package the Runners have downloaded, unpacked and built the checker of, **shared between them** under a lock, bounded by the Runner at 10 GiB |
+| `algojudge_runner-N-work` | one Runner's scratch, a submission at a time, **never shared**: an expired lease can be re-issued while the first Runner is still working, and two Runners on one scratch would delete each other's work |
+
+`docker volume ls` says what they are and `docker system df -v` says how large.
+Nothing on the host has to be made, chowned or swept: the daemon creates each
+volume root-owned and mode 0755, which is exactly what the Runner needs — it
+writes as root and every job container mounts it **read-only** and reads it as
+uid 65534.
+
+**The cache is worth keeping.** `docker compose down -v` removes it along with
+the database, and the next submission of every package downloads and builds
+again. That is minutes of a participant's time rather than data loss, but it is
+not nothing on a contest morning.
+
+### If your daemon is older than Engine 26
+
+The package a judge's container mounts is a **subdirectory** of the shared cache
+volume, and mounting one needs `subpath`: Docker Engine 26 / API 1.45 (April
+2024), or Podman 5. Below either, the Runner refuses to judge, and
+`preflight.sh` says so before you find out from a submission.
+
+That installation keeps the host directories instead, which is the arrangement
+this stack shipped until 2026-09-16 and is supported, not deprecated:
+
+```bash
+cp compose.directories.yaml compose.override.yaml
+```
+
+Then set `RUNNER_WORK_DIR` in `.env` — **an absolute host path**, because the
+Runner hands it to the Docker daemon and **a path the daemon cannot open
+becomes an empty directory rather than an error**, so every submission would
+run against nothing with no test failing visibly. `RUNNER_CACHE_DIR` has a
+working default; keep it **out of** `RUNNER_WORK_DIR`, whose first-level
+directories the scheduled clean-up removes by age. `preflight.sh` checks all
+three and says which one is wrong.
 
 ```bash
 sudo mkdir -p /srv/algojudge/runner-work
 ```
 
-Compose creates a missing bind-mount source as **root, mode 0755**, which is
-exactly right: the Runner writes there as root, and every job container mounts
-it **read-only** and reads it as uid 65534. What breaks it is a directory locked
-down by hand — jobs then fail with `Permission denied (os error 13)` from inside
-the sandbox layer. `preflight.sh` probes both halves, writing as root and
-reading back as 65534, and says which one failed.
+Making it yourself is optional: Compose creates a missing bind-mount source as
+**root, mode 0755**, which is what this needs. What breaks it is a directory
+locked down by hand — jobs then fail with `Permission denied (os error 13)`
+from inside the sandbox layer. `preflight.sh` probes both halves, writing as
+root and reading back as 65534, and says which one failed.
+
+**If you set `COMPOSE_FILE`, name `compose.override.yaml` in it.** Compose reads
+that file by itself only while `COMPOSE_FILE` is unset, and dropping it would
+start the Runners on empty volumes instead of these directories.
 
 *`chown 65532:65532` also works and costs nothing; the Runner runs as root, so
 it is not needed.*
@@ -480,11 +529,16 @@ clones this repository and runs `COMPOSE_PROFILES=runner` with
 ```ini
 SERVER_URL=https://your.domain
 RUNNER_NAME_PREFIX=lab-a       # different on every host
-RUNNER_WORK_DIR=/srv/algojudge/runner-work
 RUNNER_1_CPUSET=0,1,2,3        # one Runner per group of cores,
 RUNNER_2_CPUSET=4,5,6,7        # one lane per core in the group
 RUNNER_TESTS_AT_ONCE=2
 ```
+
+**Each Runner host needs Docker Engine 26 or later**, and its own disk where
+Docker keeps volumes — the Runners' cache and scratch are volumes on the
+machine that judges, not on the application host. A lab machine below that
+engine keeps the host directories: see
+[Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
 
 **The profile starts two Runners**, named `lab-a-1` and `lab-a-2` here;
 `runner-extra` adds `lab-a-3` and `lab-a-4` on a host with the processors for
@@ -601,6 +655,19 @@ these scripts learn about an overlay at all: `update.sh`, `rollback.sh` and
 `preflight.sh` all compose without naming files, so an overlay given once with
 `-f` is invisible to every one of them — and the next `update` or `rollback`
 composes without it and takes its services away with `--remove-orphans`.
+
+**Name `compose.override.yaml` in it too**, if you have one:
+
+```bash
+COMPOSE_FILE="compose.yaml:compose.override.yaml:state/lti.compose.yaml"
+```
+
+Compose reads `compose.override.yaml` by itself **only while `COMPOSE_FILE` is
+unset**. Setting it silently drops that file, and if yours is the copy of
+`compose.directories.yaml` described under
+[Where the Runners keep their bytes](#where-the-runners-keep-their-bytes), the
+Runners would come up on empty volumes rather than on the directories holding
+every package they have downloaded and built.
 
 **And the frame header has to go**, if your LMS is on a different name from this
 installation. `X-Frame-Options: SAMEORIGIN` — which `nginx/snippets/security-headers.conf`

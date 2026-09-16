@@ -21,22 +21,54 @@ lock
 
 RETENTION=$(setting GC_TMP_RETENTION_DAYS 7)
 
-# ── The Runner's work directory ─────────────────────────────────────────────
+# ── The Runners' scratch ────────────────────────────────────────────────────
 #
 # **Strays are normal, not a defect.** A Runner killed mid-evaluation cannot
 # clean up after itself, and the job it was doing goes back on the queue by
-# lease.
+# lease. **Nothing else removes them**: a Runner empties the one directory it
+# is about to use and no other, and the job it dropped is usually re-claimed by
+# a different Runner, whose scratch is somewhere else entirely.
+#
+# **A whole day of margin, and that is the point of the units.** An evaluation
+# takes minutes; deleting a directory a Runner is still using would fail an
+# evaluation that was going to succeed.
 
 work=${RUNNER_WORK_DIR:-}
 if [ -n "$work" ] && [ -d "$work" ]; then
-    # **A whole day of margin, and that is the point of the units.** An
-    # evaluation takes minutes; deleting a directory a Runner is still using
-    # would fail an evaluation that was going to succeed.
+    # **The directories overlay**, where the scratch is one host directory with
+    # a directory per Runner under it and this shell can reach all of it.
     removed=$(find "$work" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION" -print 2>/dev/null | wc -l)
     if [ "$removed" -gt 0 ]; then
         find "$work" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION" -exec rm -rf {} + 2>/dev/null
         log "removed $removed work director(y|ies) older than $RETENTION days"
     fi
+else
+    # **The default, where each Runner's scratch is a volume of its own** and
+    # has no path this shell can open. Swept from inside a throwaway container
+    # instead, one per Runner.
+    #
+    # **The volume is read off the running container rather than named here.**
+    # Compose prefixes a volume with the project name, which an installation may
+    # set; asking the container that has it mounted needs no guess and skips a
+    # Runner this host does not run. It also cannot bring one into existence by
+    # naming it, which `docker run -v` would.
+    sweeper="nginx:$(setting NGINX_TAG 1.27-alpine)"   # as `preflight.sh` probes with
+    for n in 1 2 3 4; do
+        container=$(compose ps -q "runner-$n" 2>/dev/null) || continue
+        [ -n "$container" ] || continue
+        volume=$(docker inspect -f \
+            '{{range .Mounts}}{{if eq .Destination "/var/lib/algojudge-runner/work"}}{{.Name}}{{end}}{{end}}' \
+            "$container" 2>/dev/null)
+        [ -n "$volume" ] || continue
+        removed=$(MSYS_NO_PATHCONV=1 docker run --rm -u 0:0 -v "$volume:/work" "$sweeper" \
+            sh -c "find /work -mindepth 1 -maxdepth 1 -type d -mtime +$RETENTION -print | wc -l" \
+            2>/dev/null | tr -d '[:space:]')
+        case "${removed:-0}" in ''|*[!0-9]*) continue ;; 0) continue ;; esac
+        MSYS_NO_PATHCONV=1 docker run --rm -u 0:0 -v "$volume:/work" "$sweeper" \
+            sh -c "find /work -mindepth 1 -maxdepth 1 -type d -mtime +$RETENTION -exec rm -rf {} +" \
+            >/dev/null 2>&1
+        log "removed $removed work director(y|ies) older than $RETENTION days from $volume"
+    done
 fi
 
 # ── Job containers nobody collected ─────────────────────────────────────────

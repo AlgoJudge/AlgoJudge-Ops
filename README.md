@@ -12,7 +12,7 @@ delivered artefact you clone, configure through `.env`, and run. Two things
 follow, and they run through everything here:
 
 - **The default configuration works after `git clone`, `cp .env.example .env`
-  and `docker compose up -d`**, with three values filled in and no Compose file
+  and `docker compose up -d`**, with two values filled in and no Compose file
   edited.
 - **It does not impose operational policy.** It ships scripts and an example
   crontab; whether and when to run them is yours. The update entry is commented
@@ -39,6 +39,7 @@ other.
 | | |
 |---|---|
 | `compose.yaml` | every service, seven profile names, one file |
+| `compose.directories.yaml` | the Runners' cache and scratch as host directories instead of volumes, for a daemon older than Engine 26 |
 | `.env.example` | every variable, with no secret values |
 | `nginx/` | TLS, one origin for both halves, and the page for when the Client is gone |
 | `scripts/` | preflight, backup, restore, update, rollback, maintenance, gc, render-tls, install-cron, check-repository, and the `lib/` they share |
@@ -65,8 +66,8 @@ cd /opt/algojudge-ops
 cp .env.example .env
 ```
 
-Fill in the three values that have no default — `AJ_ADMIN_TOKEN`,
-`POSTGRES_PASSWORD` and `RUNNER_WORK_DIR` — then:
+Fill in the two values that have no default — `AJ_ADMIN_TOKEN` and
+`POSTGRES_PASSWORD` — then:
 
 ```bash
 ./scripts/render-tls.sh your.domain    # only if you have no certificate yet

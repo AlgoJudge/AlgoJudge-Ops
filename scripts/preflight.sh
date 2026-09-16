@@ -17,7 +17,7 @@ report() { warn "$*"; problems=$((problems + 1)); }
 [ -f "$ROOT/.env" ] || die "no .env — copy .env.example to .env and fill it in"
 load_env
 
-# ── The three with no default ───────────────────────────────────────────────
+# ── The two with no default ─────────────────────────────────────────────────
 
 if [ -z "${AJ_ADMIN_TOKEN:-}" ]; then
     report "AJ_ADMIN_TOKEN is empty. /admin is closed while it is, and that includes
@@ -33,46 +33,81 @@ if [ -z "${POSTGRES_PASSWORD:-}" ]; then
        the empty string. Generate one: openssl rand -base64 36"
 fi
 
-# ── The Runner's work directory ─────────────────────────────────────────────
+# ── Where the Runners keep their bytes ──────────────────────────────────────
+
+# **Which of the two arrangements this installation has**, read from what
+# Compose will actually start rather than from a variable. By default every
+# Runner is given named volumes and no host path at all; the directories
+# overlay — `compose.directories.yaml` copied over `compose.override.yaml` —
+# sets `AJ_Work__HostPath` instead. Asking the rendered file means an operator
+# who copied that overlay and one who did not are each checked against the
+# arrangement they have, and neither is warned about the other's.
+directories=no
 
 if runs_service runner-1 runner; then
-        if [ -z "${RUNNER_WORK_DIR:-}" ]; then
-            report "RUNNER_WORK_DIR is empty and this installation starts the Runner. It must
-       be an absolute host path — see .env.example."
-        elif [ "${RUNNER_WORK_DIR#/}" = "$RUNNER_WORK_DIR" ]; then
-            # Not "does it exist": Compose creates it. The Runner hands this
-            # string to the Docker daemon, and a relative one resolves against
-            # the daemon's own filesystem — silently, as an empty directory.
-            report "RUNNER_WORK_DIR is '$RUNNER_WORK_DIR', which is relative. The Docker
+        if compose config 2>/dev/null | grep -q 'AJ_Work__HostPath'; then
+            directories=yes
+        fi
+
+        if [ "$directories" = no ]; then
+            # **API 1.45 is this arrangement's floor, not a recommendation.** A
+            # package is unpacked once in the cache volume the Runners share,
+            # and each judged container mounts its subdirectory out of there as
+            # `subpath` — which arrived in Docker Engine 26 / API 1.45 (April
+            # 2024) and in Podman 5. An older daemon cannot express that mount
+            # at all, and the Runner refuses to judge rather than judging
+            # against an empty directory.
+            api=$(docker version --format '{{.Server.APIVersion}}' 2>/dev/null | tr -d '[:space:]')
+            if [ -n "$api" ] && [ "$(printf '%s\n1.45\n' "$api" | sort -V | head -n1)" != "1.45" ]; then
+                report "this daemon speaks Docker API $api, and the Runners' cache volume needs
+       1.45 (Engine 26, April 2024; Podman 5). The Runner would refuse to judge.
+       Either update the daemon, or keep the host directories this stack used
+       until 2026-09-16:
+           cp compose.directories.yaml compose.override.yaml
+       and set RUNNER_WORK_DIR in .env — see .env.example."
+            fi
+        else
+            if [ -z "${RUNNER_WORK_DIR:-}" ]; then
+                report "RUNNER_WORK_DIR is empty and compose.override.yaml puts the Runners'
+       scratch in host directories. It must be an absolute host path — see
+       .env.example — or remove the overlay and let them use volumes."
+            elif [ "${RUNNER_WORK_DIR#/}" = "$RUNNER_WORK_DIR" ]; then
+                # Not "does it exist": Compose creates it. The Runner hands this
+                # string to the Docker daemon, and a relative one resolves
+                # against the daemon's own filesystem — silently, as an empty
+                # directory.
+                report "RUNNER_WORK_DIR is '$RUNNER_WORK_DIR', which is relative. The Docker
        daemon is given this path directly, and a path it cannot open becomes an
        empty directory rather than an error — so every submission would run
        against nothing. Write an absolute path."
-        fi
+            fi
 
-        # **The cache, which has a default and so is never empty.** It is read
-        # through `setting` rather than from the environment for exactly that
-        # reason: an installation that never names it still has one, and it is
-        # still a path the daemon has to be able to open — a judge's container
-        # mounts the unpacked package straight out of it.
-        cache=$(setting RUNNER_CACHE_DIR /srv/algojudge/runner-cache)
-        if [ "${cache#/}" = "$cache" ]; then
-            report "RUNNER_CACHE_DIR is '$cache', which is relative. The Runner hands this
+            # **The cache, which the overlay gives a default and so is never
+            # empty.** It is read through `setting` rather than from the
+            # environment for exactly that reason: an installation that never
+            # names it still has one, and it is still a path the daemon has to
+            # be able to open — a judge's container mounts the unpacked package
+            # straight out of it.
+            cache=$(setting RUNNER_CACHE_DIR /srv/algojudge/runner-cache)
+            if [ "${cache#/}" = "$cache" ]; then
+                report "RUNNER_CACHE_DIR is '$cache', which is relative. The Runner hands this
        path to the Docker daemon for every checker it runs, and a path the
        daemon cannot open becomes an empty directory rather than an error.
        Write an absolute path."
-        fi
+            fi
 
-        # **Not under the work directory**, because `scripts/gc.sh` removes
-        # first-level directories there by age — which would take a package out
-        # from under a Runner that is judging with it.
-        case "$cache/" in
-            "${RUNNER_WORK_DIR:-/dev/null}"/*)
-                report "RUNNER_CACHE_DIR ($cache) is inside RUNNER_WORK_DIR. The scheduled
+            # **Not under the work directory**, because `scripts/gc.sh` removes
+            # first-level directories there by age — which would take a package
+            # out from under a Runner that is judging with it.
+            case "$cache/" in
+                "${RUNNER_WORK_DIR:-/dev/null}"/*)
+                    report "RUNNER_CACHE_DIR ($cache) is inside RUNNER_WORK_DIR. The scheduled
        clean-up removes directories under the work directory by age, and the
        cache is not scratch: it would be deleted while a Runner was reading it.
        Put it somewhere of its own."
-                ;;
-        esac
+                    ;;
+            esac
+        fi
 
         # **Lanes against processors, per Runner.** A Runner given fewer
         # processors than the tests it is told to judge at once refuses to
@@ -205,7 +240,12 @@ if runs_service runner-1 runner; then
         # inside the sandbox layer -- the same sentence a wrong DOCKER_GID used
         # to produce, which is why they are checked apart. Probed in containers
         # because this path belongs to the daemon's filesystem, not this shell's.
-        if [ -n "${RUNNER_WORK_DIR:-}" ] && [ "${RUNNER_WORK_DIR#/}" != "$RUNNER_WORK_DIR" ]; then
+        #
+        # **The directories only.** With volumes there is no host path to get
+        # wrong: the daemon makes them itself, root-owned and mode 0755, which
+        # is exactly what these two probes check a hand-made directory for.
+        if [ "$directories" = yes ] && [ -n "${RUNNER_WORK_DIR:-}" ] \
+           && [ "${RUNNER_WORK_DIR#/}" != "$RUNNER_WORK_DIR" ]; then
             probe_image="nginx:$(setting NGINX_TAG 1.27-alpine)"
             if ! MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'echo probe > /work/.algojudge-probe' >/dev/null 2>&1; then
                 report "the Runner cannot write into RUNNER_WORK_DIR. It runs as root, so this

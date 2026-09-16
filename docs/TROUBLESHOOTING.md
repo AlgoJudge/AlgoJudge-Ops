@@ -85,12 +85,22 @@ In order of how often it is each one:
    the Runner looks for `algojudge/lang-*:local`, which only a development host
    has. `compose.yaml` sets all four from `REGISTRY` and `RUNNER_TAG`; if you
    overrode them, check `docker images`.
-3. **`RUNNER_WORK_DIR` is wrong.** This is the nastiest one, because it fails
-   *silently*: the Docker daemon is handed this path directly, and a path it
-   cannot open produces an **empty directory** rather than an error. Every job
-   then runs against nothing. It must be **absolute**, and it must be a path the
-   daemon — not just your shell — can open.
-4. **Tags.** A Runner with `RUNNER_TAGS` set is out of the general pool, and work
+3. **The daemon is older than Engine 26.** A package is unpacked into the
+   volume the Runners share and each judged container mounts its subdirectory
+   out of there, which needs `subpath` — Engine 26 / API 1.45 (April 2024),
+   or Podman 5. The Runner **refuses to judge** and says so rather than judging
+   against nothing. `./scripts/preflight.sh` reports it before a submission
+   does, and `docker version --format '{{.Server.APIVersion}}'` is the number.
+   Either update the daemon, or keep the host directories:
+   `cp compose.directories.yaml compose.override.yaml`, then set
+   `RUNNER_WORK_DIR` in `.env`.
+4. **`RUNNER_WORK_DIR` is wrong**, and only with that overlay in place. This is
+   the nastiest one, because it fails *silently*: the Docker daemon is handed
+   this path directly, and a path it cannot open produces an **empty
+   directory** rather than an error. Every job then runs against nothing. It
+   must be **absolute**, and it must be a path the daemon — not just your
+   shell — can open.
+5. **Tags.** A Runner with `RUNNER_TAGS` set is out of the general pool, and work
    with no tags goes to the general pool. Empty means `default` on both sides.
    Note that **tags are read once, at the first registration** — changing the
    variable later does nothing.
@@ -158,11 +168,24 @@ Every submission to a problem whose package brings a checker comes back as an
 infrastructure failure — often worded as though the author's checker did not
 build — or a checker decides against an empty input.
 
-**`RUNNER_CACHE_DIR` is a path the Docker daemon cannot open.** A package is
-unpacked and its checker built once, in the cache, and both are bind-mounted
-into the container that judges with them. The daemon resolves that bind, so the
-directory has to exist on the host and be readable by uid 65534, which is what
-`scripts/preflight.sh` probes:
+**The cache is not the one the Runner is writing to.** A package is unpacked
+and its checker built once, in the cache, and both are mounted into the
+container that judges with them — so the daemon has to reach the same bytes
+the Runner prepared.
+
+By default the cache is the volume `algojudge_runner-cache` and the daemon
+reaches it by name, which leaves nothing to get wrong; this entry is then
+almost always the Runner having been pointed somewhere else by hand. Check what
+it was actually given:
+
+```bash
+docker compose exec runner-1 env | grep AJ_Cache__
+docker volume inspect algojudge_runner-cache
+```
+
+**With the directories overlay** it is a host path, and a path the daemon
+cannot open is the ordinary cause. It has to exist on the host and be readable
+by uid 65534, which is what `scripts/preflight.sh` probes:
 
 ```bash
 sudo mkdir -p /srv/algojudge/runner-cache
@@ -170,9 +193,9 @@ sudo chmod 755 /srv/algojudge/runner-cache
 ./scripts/preflight.sh
 ```
 
-A Runner started against a path the daemon cannot open refuses to judge at all
-and says so naming `AJ_Cache__HostPath`, so the case above is the narrower one:
-a directory that exists but is not the one the Runner is writing to.
+A Runner started against a cache it cannot see refuses to judge at all and says
+so, naming `AJ_Cache__HostPath` or `AJ_Cache__Volume`, so the case above is the
+narrower one: a cache that exists but is not the one the Runner is writing to.
 
 ## Nothing **external** is being judged
 
@@ -331,12 +354,14 @@ The runner service runs as root, which opens the socket whatever groups it is
 in, so this is only a cause where `compose.yaml` has been edited to drop that.
 Where it is, the Runner fails at **startup** and never reaches a job.
 
-**Two: `RUNNER_WORK_DIR` cannot be read by a job container.** The Runner writes
-a submission's files there as root; every job container mounts the directory
-**read-only** and reads it as uid **65534**. A directory locked down by hand
-passes for the Runner and fails for the job, so the socket works perfectly, the
-Runner registers, claims a job — and every single one fails at once, which is
-how to tell the two apart.
+**Two: `RUNNER_WORK_DIR` cannot be read by a job container**, which is a cause
+only with the directories overlay — a volume is created root-owned and mode
+0755 by the daemon, and that is already right. The Runner writes a submission's
+files there as root; every job container mounts the directory **read-only** and
+reads it as uid **65534**. A directory locked down by hand passes for the
+Runner and fails for the job, so the socket works perfectly, the Runner
+registers, claims a job — and every single one fails at once, which is how to
+tell the two apart.
 
 ```bash
 sudo chmod 755 /srv/algojudge/runner-work

@@ -34,6 +34,32 @@ one that wants to decide every version writes `0.1.0`.
 stack pointed at `0` never sees it; testing one means writing the full version
 into `.env`.
 
+## What `main` already needs that `0` does not yet carry
+
+**This is not a general warning; it is a list, and it has to be emptied before
+the next tag.** `main` here runs ahead of the published images on purpose, so
+a setting can exist in `compose.yaml` before the image that reads it ships. Most
+of that is harmless — a Runner that does not know `AJ_Runner__TestsAtOnce`
+ignores it and judges one test at a time, exactly as before.
+
+**One entry is not harmless**, and it is why this section exists:
+
+- **The Runners' cache and scratch are volumes** since 2026-09-16, named in
+  `AJ_Cache__Volume` and `AJ_Work__Volume`. A Runner image that does not read
+  those keys ignores them, falls back to `AJ_Cache__HostPath`, and hands the
+  daemon a **container** path — which becomes an empty directory rather than
+  an error, so every submission is judged against nothing and no test fails
+  visibly. **`RUNNER_TAG=0` must resolve to a Runner carrying that support
+  before this stack is tagged**, which means releasing AlgoJudge-Runner first
+  and checking the image, not the commit:
+
+  ```bash
+  docker run --rm ghcr.io/algojudge/algojudge-runner:0 --help 2>&1 | grep -i volume
+  ```
+
+  An installation below Docker Engine 26 keeps `compose.directories.yaml`, and
+  that arrangement is unaffected either way.
+
 ## Eight images, four repositories, and this one last
 
 1. **AlgoJudge-Server** and **AlgoJudge-Client** — independent of each other,
@@ -77,8 +103,8 @@ needs no `docker login` either.
       had one.
 - [ ] `python3 scripts/check-repository.py` — nine checks, the same run CI does.
       **What it covers**: no committed configuration file assigns a literal to a
-      secret-shaped setting; `.env.example` and `compose.yaml` name the same
-      variables; the three with no default are empty; one PostgreSQL major in
+      secret-shaped setting; `.env.example` and the compose files name the
+      same variables; the two with no default are empty; one PostgreSQL major in
       both files; the four product tags agree across both files; `pgdata` is
       mounted above `PGDATA`; nginx does not intercept the API, does not answer
       `503` and refuses `/api/v1/admin`; nothing names a bare `/health`; every
@@ -89,7 +115,7 @@ needs no `docker login` either.
       skips `.py` files in the secret scan; it never runs `docker compose`; and
       nothing anywhere reads prose. The three steps below are the rest, by hand.
 - [ ] `bash -n` over every script in `scripts/` and `scripts/lib/`. Ten of them.
-- [ ] **Every arrangement resolves**, with a throwaway `.env` carrying the three
+- [ ] **Every arrangement resolves**, with a throwaway `.env` carrying the two
       values that have no default:
 
       COMPOSE_PROFILES=edge,app,data,runner docker compose config --services
@@ -100,15 +126,18 @@ needs no `docker login` either.
       and the expected answers for the other six.
 - [ ] `./scripts/preflight.sh` refuses what it should on a deliberately wrong
       `.env` — an empty password, an empty or short token, a CIDR with host bits,
-      a relative work directory, an unknown `STORAGE_KIND`, and the external
-      Runner's account left empty while its profile is on.
+      an unknown `STORAGE_KIND`, and the external Runner's account left empty
+      while its profile is on. Then with `compose.directories.yaml` copied over
+      `compose.override.yaml`: an empty work directory and a relative one are
+      refused only there, and without the overlay neither is a fault.
 - [ ] nginx **starts** with the configuration rather than merely parsing it. CI
       runs `nginx -t`, which is a test and not a start, so do the start here.
       Outside the Compose network it needs `--add-host server:127.0.0.1
       --add-host client:127.0.0.1`: nginx resolves every upstream while reading
       the configuration.
-- [ ] **`.env.example` agrees with `compose.yaml` and with the scripts, both
-      ways.** The checker does the compose half; the script half is the `setting
+- [ ] **`.env.example` agrees with the compose files and with the scripts, both
+      ways.** The checker does the compose half, `compose.yaml` and
+      `compose.directories.yaml` together; the script half is the `setting
       NAME` and `${NAME}` reads in `scripts/`. `COMPOSE_PROFILES`,
       `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` and `ALGOJUDGE_LOCK_HELD` are the
       deliberate exceptions — Compose's own, or internal to the scripts.

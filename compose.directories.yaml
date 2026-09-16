@@ -1,0 +1,60 @@
+# The Runners' cache and scratch as **host directories**, which is what this
+# stack shipped until 2026-09-16.
+#
+#     cp compose.directories.yaml compose.override.yaml
+#
+# Compose reads `compose.override.yaml` on its own, so that is the whole of it;
+# `make up` and every script keep working unchanged.
+#
+# **Who needs this.** A volume's subdirectory travels to a job container as
+# `subpath`, which arrived in Docker Engine 26 / API 1.45 (April 2024) and, on
+# Podman, in 5.x. An installation on anything older keeps the directories -- the
+# Runner supports both, and neither is a downgrade of anything but convenience.
+#
+# **What it costs to stay here.** Two spellings of every directory: one as the
+# Runner sees it and one as the daemon does, `AJ_*__Path` against
+# `AJ_*__HostPath`. They are set from one variable each below so they cannot
+# drift, which is the arrangement the volumes remove rather than improve.
+#
+# Set `RUNNER_CACHE_DIR` and `RUNNER_WORK_DIR` in `.env` before using this; both
+# are documented there.
+services:
+  runner-1:
+    environment:
+      AJ_Cache__Volume: ""
+      AJ_Work__Volume: ""
+      AJ_Cache__HostPath: ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required when the directories are used — see .env.example}/runner-1
+    volumes:
+      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required when the directories are used — see .env.example}/runner-1:/var/lib/algojudge-runner/work
+
+  runner-2:
+    environment:
+      AJ_Cache__Volume: ""
+      AJ_Work__Volume: ""
+      AJ_Cache__HostPath: ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required when the directories are used — see .env.example}/runner-2
+    volumes:
+      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required when the directories are used — see .env.example}/runner-2:/var/lib/algojudge-runner/work
+
+  runner-3:
+    environment:
+      AJ_Cache__Volume: ""
+      AJ_Work__Volume: ""
+      AJ_Cache__HostPath: ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required when the directories are used — see .env.example}/runner-3
+    volumes:
+      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required when the directories are used — see .env.example}/runner-3:/var/lib/algojudge-runner/work
+
+  runner-4:
+    environment:
+      AJ_Cache__Volume: ""
+      AJ_Work__Volume: ""
+      AJ_Cache__HostPath: ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}
+      AJ_Work__HostPath: ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required when the directories are used — see .env.example}/runner-4
+    volumes:
+      - ${RUNNER_CACHE_DIR:-/srv/algojudge/runner-cache}:/var/cache/algojudge-runner
+      - ${RUNNER_WORK_DIR:?RUNNER_WORK_DIR is required when the directories are used — see .env.example}/runner-4:/var/lib/algojudge-runner/work

@@ -105,8 +105,13 @@ def no_secret_committed(problems):
 
 
 def env_example_and_compose_agree(problems):
-    """Every variable compose expands appears in `.env.example`, and back."""
-    compose = read("compose.yaml")
+    """Every variable compose expands appears in `.env.example`, and back.
+
+    **Both files.** `compose.directories.yaml` is an overlay an installation
+    copies over `compose.override.yaml`, and a variable only it expands is
+    still a variable an operator sets.
+    """
+    compose = read("compose.yaml") + read("compose.directories.yaml")
     example = read(".env.example")
 
     # `${NAME}`, `${NAME:-default}`, `${NAME:?message}`. Not the `AJ_`-prefixed
@@ -125,7 +130,7 @@ def env_example_and_compose_agree(problems):
 
     for name in sorted(used - described):
         problems.append(
-            f".env.example does not mention {name}, which compose.yaml expands. "
+            f".env.example does not mention {name}, which a compose file expands. "
             "An operator has no way to learn it exists."
         )
 
@@ -138,21 +143,26 @@ def env_example_and_compose_agree(problems):
         from_scripts |= set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)[:}-]", text))
     for name in sorted(described - used - from_scripts - {"COMPOSE_PROFILES"}):
         problems.append(
-            f".env.example describes {name}, which nothing in compose.yaml or "
+            f".env.example describes {name}, which nothing in a compose file or "
             "scripts/ reads. It is advice that does nothing."
         )
 
 
 def secrets_have_no_defaults(problems):
-    """The three that must not start with a working value, do not have one."""
+    """The two that must not start with a working value, do not have one.
+
+    `RUNNER_WORK_DIR` was a third until 2026-09-16, when the Runners' scratch
+    became a Docker volume by default: empty is the working answer now rather
+    than an unmade decision, and it is set only with `compose.directories.yaml`.
+    """
     example = read(".env.example")
-    for name in ("AJ_ADMIN_TOKEN", "POSTGRES_PASSWORD", "RUNNER_WORK_DIR"):
+    for name in ("AJ_ADMIN_TOKEN", "POSTGRES_PASSWORD"):
         match = re.search(rf"^{name}=(.*)$", example, re.MULTILINE)
         if match is None:
             problems.append(f".env.example has no {name} line at all.")
         elif match.group(1).strip():
             problems.append(
-                f".env.example ships {name}={match.group(1)!r}. These three have no "
+                f".env.example ships {name}={match.group(1)!r}. These two have no "
                 "safe default: an installation must be made to choose."
             )
 

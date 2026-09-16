@@ -40,14 +40,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: A .env with the three values that have no default
+      - name: A .env with the two values that have no default
         # Throwaway values, named for what they are. What is checked is that the
         # file resolves, not that it deploys, so no repository secret is needed.
         run: |
           cp .env.example .env
           sed -i 's|^AJ_ADMIN_TOKEN=.*|AJ_ADMIN_TOKEN=ci-only-not-a-deployment|' .env
           sed -i 's|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=ci-only-not-a-deployment|' .env
-          sed -i 's|^RUNNER_WORK_DIR=.*|RUNNER_WORK_DIR=/tmp/algojudge-runner-work|' .env
 
       - name: Each topology resolves to the services it should
         # `config` is the whole check: it expands every variable, applies the
