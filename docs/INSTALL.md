@@ -266,15 +266,24 @@ gets a 404. That is measured behaviour, not a guess.
 
 ## How many Runners, and how wide
 
-**Two, judging four of one submission's tests at a time each** — which is what
+**Two, judging two of one submission's tests at a time each** — which is what
 the `runner` profile starts and what `.env.example` is written for, on a machine
-with eight processors:
+whose eight processors are four cores of two threads:
 
 ```ini
-RUNNER_1_CPUSET=0-3
-RUNNER_2_CPUSET=4-7
-RUNNER_TESTS_AT_ONCE=4
+RUNNER_1_CPUSET=0,1,2,3
+RUNNER_2_CPUSET=4,5,6,7
+RUNNER_TESTS_AT_ONCE=2
 ```
+
+**A lane wants a whole core, and the width follows from that** rather than from
+the processor count. Measured 2026-09-15 on one submission of 72 tests: 196 ms a
+test in lanes of a core against 318 ms in lanes of a thread, which put 610 of 864
+tests over a limit none of them reached at the wider setting. A time limit is
+processor time, so that is correct solutions refused. Per submission the two are
+the same speed — 11.2 s against 12.5 s — so the thin arrangement buys throughput
+and pays for it in the verdicts. The Runner warns at start, once per lane that
+holds a thread whose sibling went elsewhere.
 
 A Runner judges one submission at a time, so the count of Runners is how many
 submissions are judged at once. **`RUNNER_TESTS_AT_ONCE` is how many of that
@@ -472,9 +481,9 @@ clones this repository and runs `COMPOSE_PROFILES=runner` with
 SERVER_URL=https://your.domain
 RUNNER_NAME_PREFIX=lab-a       # different on every host
 RUNNER_WORK_DIR=/srv/algojudge/runner-work
-RUNNER_1_CPUSET=0-3            # one Runner per group of processors,
-RUNNER_2_CPUSET=4-7            # one lane per processor in the group
-RUNNER_TESTS_AT_ONCE=4
+RUNNER_1_CPUSET=0,1,2,3        # one Runner per group of cores,
+RUNNER_2_CPUSET=4,5,6,7        # one lane per core in the group
+RUNNER_TESTS_AT_ONCE=2
 ```
 
 **The profile starts two Runners**, named `lab-a-1` and `lab-a-2` here;

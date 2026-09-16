@@ -419,10 +419,10 @@ services:
     # cuts it into one lane per test it judges at once, in the order it is
     # written here.
     #
-    # **One Runner per group of processors, one lane per processor in the
-    # group.** `0-3` here with `RUNNER_TESTS_AT_ONCE=4`, `4-7` next door: one
-    # submission is then judged four ways and a participant waits for its
-    # slowest test rather than for all of them.
+    # **One Runner per group of cores, one lane per core in the group.**
+    # `0,1,2,3` here with `RUNNER_TESTS_AT_ONCE=2`, `4,5,6,7` next door: one
+    # submission is then judged two ways and a participant waits for its
+    # slowest pair rather than for all of them.
     #
     # **A lane wants a processor; a core of its own is a choice on top.** Two
     # *different* Runners on one core take each other's execution units, and so
@@ -450,9 +450,9 @@ services:
   # identity, their scratch and their processors. Everything else is `<<:
   # *runner`, so what is written above governs all four and cannot drift.
   #
-  # **Two of them start by default, and the reference is two Runners of four
-  # lanes each** on a machine with eight processors: `RUNNER_1_CPUSET=0-3`,
-  # `RUNNER_2_CPUSET=4-7`, `RUNNER_TESTS_AT_ONCE=4`. That spends the same
+  # **Two of them start by default, and the reference is two Runners of two
+  # lanes each** on eight processors that are four cores: `RUNNER_1_CPUSET=0,1,2,3`,
+  # `RUNNER_2_CPUSET=4,5,6,7`, `RUNNER_TESTS_AT_ONCE=2`. That spends the same
   # processors on one submission at a time instead of four, which is the trade
   # being made: fewer submissions judged at once, each answered sooner.
   #
