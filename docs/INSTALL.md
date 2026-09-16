@@ -291,12 +291,29 @@ start and an error nobody can connect to anything.
 
 ```bash
 ./scripts/preflight.sh
+./scripts/pull.sh
 docker compose up -d --wait
 ```
 
+or `make up`, which is those three.
+
 `preflight.sh` refuses now, with a sentence, rather than half way up: an empty
 password, a missing token, a CIDR with host bits, a relative work directory, a
-`DOCKER_GID` that does not match the socket. `make up` runs it first.
+`DOCKER_GID` that does not match the socket.
+
+**`pull.sh` is the step that is easy to skip and must not be.** On a host that
+runs Runners it fetches **several gigabytes** and takes minutes — that is the
+compiler toolchain, and it is normal. The four language images are **not
+Compose services**: they are values the Runner is handed, so `docker compose
+pull` cannot see them and `compose up` will not bring them. An installation
+that skipped this and never ran an update had no toolchain at all, and every
+submission failed.
+
+A Runner started without them refuses to register rather than claiming work it
+would fail, naming the `AJ_Sandbox__Image__*` setting it could not satisfy. So
+the worst case is a Runner that will not come up, not a contest judged against
+nothing — but the download is better done here, in your own terminal, than
+inside a container a `--wait` is blocking on.
 
 ## 4. The administrator
 

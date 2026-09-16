@@ -215,6 +215,83 @@ def the_product_tags_agree(problems):
             )
 
 
+def the_language_images_have_one_spelling(problems):
+    """`compose.yaml` and `scripts/lib/images.sh` name the same four images.
+
+    **They have to be written twice and that is the whole risk.** The four are
+    not Compose services — they are `AJ_Sandbox__Image__*` values the Runner is
+    handed — so Compose cannot pull them, list them or check them, and every
+    script that wants them spells them out. A drift here is an installation
+    that fetches one image and judges in another, which nothing at runtime
+    would report: the Runner fetches what it was told and is perfectly happy.
+
+    A fifth language image is caught by the same rule, because it has to appear
+    in both places to work and in neither by accident.
+    """
+    compose = read("compose.yaml")
+    images = read("scripts/lib/images.sh")
+
+    langs = re.search(r'^LANGS="([^"]*)"', images, re.MULTILINE)
+    registry = re.search(r"\$\{REGISTRY:-([^}]*)\}", images)
+    tag = re.search(r"\$\{RUNNER_TAG:-([^}]*)\}", images)
+    if not (langs and registry and tag):
+        problems.append(
+            "scripts/lib/images.sh no longer has a LANGS line and a lang_image() "
+            "defaulting REGISTRY and RUNNER_TAG, so nothing can be compared."
+        )
+        return
+
+    written = {
+        name: "${REGISTRY:-%s}/lang-%s:${RUNNER_TAG:-%s}"
+        % (registry.group(1), name, tag.group(1))
+        for name in langs.group(1).split()
+    }
+    found = dict(re.findall(r"AJ_Sandbox__Image__(\w+): (\S+)", compose))
+    keys = {"gcc": "Gcc", "clang": "Clang", "python": "Python", "pypy": "Pypy"}
+
+    for name, reference in written.items():
+        key = keys.get(name)
+        if key is None:
+            problems.append(
+                f"scripts/lib/images.sh lists the language {name!r}, which this "
+                "check has no AJ_Sandbox__Image__ key for."
+            )
+        elif key not in found:
+            problems.append(f"compose.yaml never sets AJ_Sandbox__Image__{key}.")
+        elif found[key] != reference:
+            problems.append(
+                f"compose.yaml sets AJ_Sandbox__Image__{key} to {found[key]!r} and "
+                f"scripts/lib/images.sh builds {reference!r}."
+            )
+    for key in found:
+        if key not in keys.values():
+            problems.append(
+                f"compose.yaml sets AJ_Sandbox__Image__{key}, which "
+                "scripts/lib/images.sh does not fetch."
+            )
+
+
+def the_stack_is_supplied_before_it_starts(problems):
+    """`make up` fetches the language images before starting anything.
+
+    **This is the 0.1.0 report as a check.** `up` was `preflight` and then
+    `compose up`, and neither can reach the four: an installation that was
+    installed and never updated had no toolchain and failed every submission.
+    The Runner refuses to register without them since 2026-09-16, so this is no
+    longer the only defence — but a stack whose `up` does not supply them turns
+    a download into a crash loop somebody has to read logs to understand.
+    """
+    makefile = read("Makefile")
+    target = re.search(r"^up:(.*)$", makefile, re.MULTILINE)
+    if not target:
+        problems.append("the Makefile has no `up` target.")
+    elif "pull" not in target.group(1).split():
+        problems.append(
+            f"`up:` depends on {target.group(1).strip()!r}, which does not include "
+            "`pull`. The language images are not services, and nothing else fetches them."
+        )
+
+
 def the_volume_is_above_pgdata(problems):
     """The PostgreSQL volume is mounted where 18 keeps its data.
 
@@ -347,6 +424,8 @@ CHECKS = (
     secrets_have_no_defaults,
     one_postgres_major,
     the_product_tags_agree,
+    the_language_images_have_one_spelling,
+    the_stack_is_supplied_before_it_starts,
     the_volume_is_above_pgdata,
     the_api_is_not_intercepted,
     the_health_path_is_versioned,

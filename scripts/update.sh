@@ -14,6 +14,7 @@
 set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/images.sh"
 
 load_env
 lock
@@ -42,20 +43,9 @@ product_services() {
         grep -E '^(server|client|external-runner|runner-[0-9]+)$' || true
 }
 
-# The four language images. They are not services -- they are values the Runner
-# is handed -- so nothing built on `compose` sees them at all.
-LANGS="gcc clang python pypy"
-
-lang_image() { printf '%s/lang-%s:%s\n' "${REGISTRY:-ghcr.io/algojudge}" "$1" "${RUNNER_TAG:-0}"; }
-
-lang_key() {
-    case $1 in
-        gcc) printf 'Gcc' ;; clang) printf 'Clang' ;;
-        python) printf 'Python' ;; pypy) printf 'Pypy' ;;
-    esac
-}
-
-judges_here() { product_services | grep -q '^runner-'; }
+# The four language images come from `lib/images.sh`, sourced above: they are
+# not services, so every script that wants them has to name them by hand, and
+# one spelling is what stops a Runner pulling one image and judging in another.
 
 # The repository a service's own image is named after, as it appears in a
 # reference: leading slash and trailing colon, because `algojudge-runner` is a
@@ -134,18 +124,16 @@ $dry_run || compose pull --quiet
 
 # **The four language images by hand, because `compose pull` does not reach
 # them.** They are not services -- they are values the Runner is given, and it
-# starts each judged run in one of them. Two facts make the omission silent:
-# the Runner pulls an image only when the host does not have it at all, and it
-# probes each image once and remembers the answer for its lifetime. So an
-# installation updated without this keeps last year's toolchain for ever, with
-# every container new and nothing to see. Measured 2026-09-08.
+# starts each judged run in one of them. An installation updated without this
+# kept last year's toolchain for ever, with every container new and nothing to
+# see. Measured 2026-09-08.
+#
+# **Since 2026-09-16 the Runner fetches them too**, unconditionally, at start.
+# This stays because it is the friendlier half: the download happens here, with
+# progress, before the stack is asked to come up, rather than inside a Runner a
+# `--wait` is blocking on.
 if judges_here; then
-    for lang in $LANGS; do
-        image=$(lang_image "$lang")
-        log "pulling $image"
-        $dry_run || docker pull --quiet "$image" >/dev/null || warn "could not pull $image;
-       the Runner will keep using the copy this host already has"
-    done
+    $dry_run || pull_langs
 fi
 
 # **Compared as image ids, because a moving tag is the normal case.**
