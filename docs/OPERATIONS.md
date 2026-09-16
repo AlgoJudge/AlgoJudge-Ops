@@ -273,6 +273,43 @@ something you recognise.
 5. Close, and wait for the drain.
 6. `up -d`, wait for healthy.
 7. Healthy: record the digests. Not healthy: roll back.
+
+### Updating past 2026-09-16, when the Runners moved into volumes
+
+An installation that was running before that day keeps its cache and scratch in
+host directories, and the update switches it to volumes. Three things follow,
+and none of them loses anything a participant can see:
+
+- **The package cache starts empty.** The first submission to each problem
+  downloads and builds again — minutes, once, per problem. **Do not update
+  on a contest morning** for that reason alone.
+- **The old directories are left where they are.** Nothing removes them, and
+  nothing reads them either. `RUNNER_CACHE_DIR` and `RUNNER_WORK_DIR` in the
+  old `.env` become inert; remove them once you are satisfied, and then
+  `sudo rm -rf /srv/algojudge/runner-cache /srv/algojudge/runner-work`.
+- **A daemon older than Engine 26 must keep the directories**, and the update
+  does not check for you before it starts. Run `./scripts/preflight.sh` first:
+  it reports the daemon's API version against 1.45 and names the overlay.
+
+**To stay on the directories**, before `up -d`:
+
+```bash
+cp compose.directories.yaml compose.override.yaml
+```
+
+The `.env` already has the two paths, so nothing else changes. That is the
+supported arrangement, not a deprecated one.
+
+**An installation older than 2026-09-15** may still have an `algojudge_runner-cache`
+volume from before the directories, holding a layout no current Runner reads.
+**The new cache volume has that same name, so Compose attaches the old one**
+rather than making a fresh one. Remove it before the first start:
+
+```bash
+docker volume rm algojudge_runner-cache
+```
+
+`docker volume ls` says whether you have one.
 8. Reopen, and prune only this project's images.
 
 The outage is steps 5 to 7 — measured at about eighteen seconds on a small
