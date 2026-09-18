@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      # An installation follows the release line it chose in .env, through
+      # the moving `0` tag or a pinned one.
+      - dependency-name: algojudge/*
+      # A PostgreSQL major changes the on-disk format. Upgrading is a
+      # migration, not a tag change.
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
