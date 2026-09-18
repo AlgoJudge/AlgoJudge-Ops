@@ -171,7 +171,7 @@ aj_admin() { compose exec -T server aj-admin "$@"; }
 # **The `image.source` label each release workflow sets, one per repository.**
 #
 # `docker image prune --filter label=key=value` matches the value **exactly**,
-# and the workflows set `<server>/<owner>/<repo>` — so the organisation's URL on
+# and the workflows set `<server>/<owner>/<repo>` — so the organization's URL on
 # its own matches nothing at all, and the prune reclaims no image while reporting
 # success.
 #

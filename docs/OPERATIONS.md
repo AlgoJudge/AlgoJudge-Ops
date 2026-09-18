@@ -194,9 +194,9 @@ months means nothing if an unreviewed hold from three years ago sits beside it.
 
 It is also why the monthly count is two rather than six. A rotated monthly dump
 does not record *why* it exists, so months later nobody can judge whether it may
-go; a labelled hold with a review date answers both questions by itself.
+go; a labeled hold with a review date answers both questions by itself.
 
-`keep/` counts towards the size budget and is warned about past half of it,
+`keep/` counts toward the size budget and is warned about past half of it,
 precisely because nothing deletes it for you.
 
 ### Contests
@@ -257,7 +257,7 @@ is the duplicate submission the *Maintenance* section describes.
 **Rehearse it.** A backup with no tested restore is a hypothesis. The honest
 rehearsal is on a spare host: clone this repository, copy `.env` and one dump,
 `docker compose up -d --wait`, `./scripts/restore.sh`, then sign in and look at
-something you recognise.
+something you recognize.
 
 ## Update
 
@@ -334,7 +334,7 @@ which is the shape of failure nobody notices until a contest.
 **Versions are tags in `.env` and digests in `state/current.lock`.** The tag says
 what was asked for; the digest says what is running, and is what a rollback
 restores. Digests cannot live in this repository — it is a product many
-organisations deploy independently, and none of them can commit to it.
+organizations deploy independently, and none of them can commit to it.
 
 ### Rollback
 
@@ -394,7 +394,7 @@ changes is that it happens in seconds instead of ten minutes.
 **"Seconds" became reliable on 2026-09-04, and was optimistic before it.** Three
 waits used to sleep straight through a stop: the retry carrying an answer already
 computed, bounded by the lease at ten minutes; the wait on a Server that is
-deliberately down, which honours the operator's own `Retry-After` and so had no
+deliberately down, which honors the operator's own `Retry-After` and so had no
 bound at all; and the loop a Runner re-enters when the Server forgets its token.
 Any of the three ran past this grace, and a killed Runner is not a slower
 release — it is none, so the job waited out its lease and the paragraph above was
@@ -551,14 +551,14 @@ does the routine part. Putting them in a nightly job is its own decision.
 `cron/algojudge.cron`, installed only by `./scripts/install-cron.sh`.
 
 **Anchored to this host's local time, not UTC.** 04:00 means 04:00 to whoever
-operates the machine, which keeps the work inside the organisation's actual quiet
+operates the machine, which keeps the work inside the organization's actual quiet
 hours rather than a fixed offset that drifts against them twice a year.
 
-- `CRON_TZ` is honoured by Vixie cron and cronie and is **not** portable to every
+- `CRON_TZ` is honored by Vixie cron and cronie and is **not** portable to every
   implementation. `install-cron.sh` finds out by installing, and falls back with
   a warning rather than silently scheduling against a different clock.
 - **04:00 and 06:00 are safe in the EU**, where the change happens at 01:00 UTC,
-  so neither hour is ever skipped or repeated. **This does not generalise** —
+  so neither hour is ever skipped or repeated. **This does not generalize** —
   some zones switch at midnight. Check your own before moving them.
 - **06:00 here is not the Server's 06:00.** The Server's file collector is
   anchored to **UTC** (`Files:CollectAtHourUtc`), so in Warsaw the two are two
@@ -570,7 +570,7 @@ hours rather than a fixed offset that drifts against them twice a year.
 **This is the largest open question in this repository.** A backup that has been
 failing for three weeks surfaces during the incident it was meant to survive.
 Point `MAILTO` at somebody who reads it, or feed `/var/log/algojudge/*.log` into
-whatever this organisation already watches. Choosing a channel here would be
+whatever this organization already watches. Choosing a channel here would be
 inventing policy for you.
 
 ## External judging

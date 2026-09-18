@@ -6,9 +6,9 @@ courses, with automatic evaluation of submitted solutions.
 The production Compose stack for [AlgoJudge](https://github.com/AlgoJudge), and
 the scripts that make a self-hosted installation updatable and backupable.
 
-**This repository is for the administrator of an organisation that wants to run
+**This repository is for the administrator of an organization that wants to run
 its own AlgoJudge.** It is not one deployment's private configuration; it is a
-delivered artefact you clone, configure through `.env`, and run. Two things
+delivered artifact you clone, configure through `.env`, and run. Two things
 follow, and they run through everything here:
 
 - **The default configuration works after `git clone`, `cp .env.example .env`

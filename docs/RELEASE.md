@@ -73,7 +73,7 @@ mark moved. Nothing here stops the release.
   neither is accepted however satisfied the judge was. A judge that **refused**
   still outranks what stopped the run, so its comment survives.
 
-  **It is a verdict change and it moves marks.** The behaviour it replaces was
+  **It is a verdict change and it moves marks.** The behavior it replaces was
   not one answer: the judge's exit and the output cap are decided in the same
   loop, so the same submission was `Accepted` on an idle host and `Output limit
   exceeded` on a busy one — measured at 24% of runs under load, 0% idle. Code

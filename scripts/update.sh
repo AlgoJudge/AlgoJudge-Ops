@@ -233,7 +233,7 @@ log "backing up before the swap"
        script will do."
 
 # **Where the backup actually went, not where it usually goes.** `backup.sh`
-# honours `BACKUP_DIR`; looking in `$ROOT/backups` regardless records an empty
+# honors `BACKUP_DIR`; looking in `$ROOT/backups` regardless records an empty
 # `dump_before` for an installation that moved its backups — and `rollback.sh`
 # prints that as the recovery command, at the one moment after a migration when
 # it is the only way back. A missing directory is worse: `find` fails, `set -euo

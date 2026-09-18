@@ -160,5 +160,5 @@ fi
 
 "$ROOT/scripts/maintenance.sh" off
 
-log "restored from $(basename "$dump"). Sign in and check something you recognise
+log "restored from $(basename "$dump"). Sign in and check something you recognize
        before telling anybody it worked."

@@ -20,7 +20,7 @@ algojudge.yml            required; states the format and the version
 pages/                   welcome, home, terms, privacy, cookies, accessibility
                          (`<kind>-<language>.md` for a translation)
 logo.svg | .png | .webp  the mark; `logo-en.svg` for one per language
-theme.yml                the colours and the typeface
+theme.yml                the colors and the typeface
 fonts/                   one WOFF2 file per face the theme names
 ```
 

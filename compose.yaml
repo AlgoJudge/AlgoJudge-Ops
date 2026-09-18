@@ -12,7 +12,7 @@
 # **Nothing here is built.** Every image is pulled by tag from GHCR and the tag is
 # a variable, so an update is `docker compose pull` and a rollback is a digest —
 # see `scripts/update.sh`. The development stacks that build from source live in
-# the product repositories and are labelled as development there.
+# the product repositories and are labeled as development there.
 
 name: algojudge
 
@@ -529,7 +529,7 @@ services:
       # Not `RUNNER_NAME`: a second Runner, with its own identity and approval.
       AJ_Runner__Name: ${EXTERNAL_RUNNER_NAME:-external-runner-1}
 
-      # One process serves one judge. An unrecognised name is refused at startup.
+      # One process serves one judge. An unrecognized name is refused at startup.
       AJ_External__Judge: ${EXTERNAL_JUDGE:-uva}
 
       # **`:-` and not `:?`**: Compose interpolates the whole file before it
