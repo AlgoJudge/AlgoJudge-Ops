@@ -17,8 +17,8 @@ jobs:
     name: The repository says what it should
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -38,7 +38,7 @@ jobs:
     name: Every arrangement resolves
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: A .env with the two values that have no default
         # Throwaway values, named for what they are. What is checked is that the
