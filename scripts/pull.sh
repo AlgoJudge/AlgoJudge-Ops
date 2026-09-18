@@ -17,7 +17,7 @@
 #
 # Nothing here is required for correctness: a Runner refuses to register
 # without its images and says which setting to change. This is the friendlier
-# line of defence, not the mechanism.
+# line of defense, not the mechanism.
 set -uo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"

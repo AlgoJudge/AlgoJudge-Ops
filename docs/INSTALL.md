@@ -126,7 +126,7 @@ The release workflow publishes to `ghcr.io/algojudge`, and **a package created b
 its first push is private**. Until somebody sets it to Public once, `docker pull`
 answers `denied` and needs a token — which defeats the point of there being no
 registry login in these instructions. The workflow cannot do it; a person with
-access to the organisation's packages must.
+access to the organization's packages must.
 
 **For 0.1 there is nothing to do: all eight are public.** Read without any
 credentials on 2026-09-08, at `0` and at `0.1.0`:
@@ -141,7 +141,7 @@ The last is built from a **private** repository and was published anyway, so tha
 profile needs no `docker login` either.
 
 This section stays because the rule outlives the release: **the next image this
-organisation publishes starts private again**, and the symptom is a `denied` on
+organization publishes starts private again**, and the symptom is a `denied` on
 `docker compose pull` in an installation that is otherwise correct.
 
 ```bash
@@ -328,7 +328,7 @@ container's own environment, so the token never enters your shell history. It is
 the only supported way to reach the operator's surface: `/api/v1/admin/**`
 answers on the Server's own loopback interface, and a request through nginx —
 or through the published `127.0.0.1:8080` — arrives as the bridge gateway and
-gets a 404. That is measured behaviour, not a guess.
+gets a 404. That is measured behavior, not a guess.
 
 ## How many Runners, and how wide
 

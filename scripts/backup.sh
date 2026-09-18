@@ -300,7 +300,7 @@ done <"$survivors.all"
 if [ "$MAX_TOTAL_GB" -gt 0 ]; then
     budget=$((MAX_TOTAL_GB * 1024 * 1024 * 1024))
 
-    # **`keep/` counts towards the budget.** Leaving it out would let an archive
+    # **`keep/` counts toward the budget.** Leaving it out would let an archive
     # nobody looks at fill the disk as reliably as an unbounded rotation would.
     used() { du -sb "$BACKUP_DIR" 2>/dev/null | cut -f1; }
 
@@ -331,7 +331,7 @@ fi
 # **Every overdue hold is reported on every run.** A rotation reaching two
 # months means nothing if an unreviewed hold from three years ago sits beside
 # it, and personal data in a dump does not stop being personal data because
-# somebody labelled the file.
+# somebody labeled the file.
 
 today=$(date '+%s')
 while IFS= read -r meta; do

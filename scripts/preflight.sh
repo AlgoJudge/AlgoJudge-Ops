@@ -343,7 +343,7 @@ if [ -z "$networks" ]; then
        address. Use 'none' if nothing sits in front of it."
 elif [ "$networks" != "none" ]; then
     # **A CIDR with host bits set is refused by the Server, by name.** .NET 10
-    # normalises `10.0.5.17/24` to `10.0.5.0/24` without a word, which turns a
+    # normalizes `10.0.5.17/24` to `10.0.5.0/24` without a word, which turns a
     # typo meaning one machine into one meaning a laboratory — so the Server
     # compares what was written against the base address and stops.
     IFS=',' read -ra entries <<<"$networks"

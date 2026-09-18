@@ -22,7 +22,7 @@ Server reached directly.
 
 ### It names a network you did not write
 
-You wrote a CIDR with host bits set — `172.28.0.5/24`. .NET normalises that to
+You wrote a CIDR with host bits set — `172.28.0.5/24`. .NET normalizes that to
 `172.28.0.0/24` without a word, which turns "one machine" into "a whole
 laboratory", so the Server refuses and names the address you should have written.
 `preflight.sh` catches it first.
@@ -143,7 +143,7 @@ one has a different id.
 2026-09-08 that was correct at the time: the Runner then filed what it
 remembered under the image's **name**, so a republished tag was answered for by
 the image that name used to mean. The keying changed in the Runner; the
-behaviour above is read from that code and has not been re-measured end to end.
+behavior above is read from that code and has not been re-measured end to end.
 When in doubt, restart — it costs seconds and settles it.*
 
 ## Every job fails with `predates the input arriving as a descriptor`
@@ -245,7 +245,7 @@ the Server refused the registration: the Server refused with 403: runner.nonce.u
 ```
 
 — and it appears only from the **second** start onwards, because the identity
-volume is what makes the Server recognise the key. A Server that requires a
+volume is what makes the Server recognize the key. A Server that requires a
 signed re-registration and an image that predates that requirement cannot agree,
 the refusal is not one a Runner retries, and `preflight.sh` cannot see it because
 the configuration is fine. Pull both images from the same release rather than

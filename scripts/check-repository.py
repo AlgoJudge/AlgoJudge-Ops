@@ -278,7 +278,7 @@ def the_stack_is_supplied_before_it_starts(problems):
     `compose up`, and neither can reach the four: an installation that was
     installed and never updated had no toolchain and failed every submission.
     The Runner refuses to register without them since 2026-09-16, so this is no
-    longer the only defence — but a stack whose `up` does not supply them turns
+    longer the only defense — but a stack whose `up` does not supply them turns
     a download into a crash loop somebody has to read logs to understand.
     """
     makefile = read("Makefile")

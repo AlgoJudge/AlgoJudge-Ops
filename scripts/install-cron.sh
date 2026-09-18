@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Installs `cron/algojudge.cron`, after checking that the running cron honours
+# Installs `cron/algojudge.cron`, after checking that the running cron honors
 # the timezone it declares.
 #
 #     ./scripts/install-cron.sh
@@ -95,11 +95,11 @@ if ! install_crontab "$rendered" 2>/dev/null; then
        Nothing was changed. The three commands are in cron/algojudge.cron and need
        nothing but a shell — schedule them with whatever this host does use."
 else
-    # Accepted is not the same as honoured: an implementation that ignores the
+    # Accepted is not the same as honored: an implementation that ignores the
     # line accepts it silently, and there is no way to check without waiting
     # until four in the morning.
     if [ -n "$zone" ] && crontab -l 2>/dev/null | grep -q "^CRON_TZ=$zone"; then
-        log "CRON_TZ=$zone accepted. Vixie cron and cronie honour it; if this host
+        log "CRON_TZ=$zone accepted. Vixie cron and cronie honor it; if this host
        runs something else, confirm once that the first backup lands at 04:00
        local rather than 04:00 UTC."
     fi

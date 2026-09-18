@@ -3,9 +3,9 @@
 # administrator's decision and not this repository's.
 #
 # **All times are the LOCAL time of this host**, not UTC, which drifts against
-# the organisation's actual quiet hours twice a year.
+# the organization's actual quiet hours twice a year.
 #
-# `CRON_TZ` is honoured by Vixie cron and by cronie, and is **not** portable to
+# `CRON_TZ` is honored by Vixie cron and by cronie, and is **not** portable to
 # every implementation. `install-cron.sh` checks the running one and falls back
 # to the host's zone with a warning rather than silently scheduling against a
 # different clock.
@@ -42,6 +42,6 @@ CRON_TZ=Europe/Warsaw
 # nobody reads.
 #
 # Uncomment this and put an address somebody actually reads behind it. Feeding
-# `/var/log/algojudge/*.log` into whatever this organisation already watches is
+# `/var/log/algojudge/*.log` into whatever this organization already watches is
 # the other answer — see the open question in docs/OPERATIONS.md.
 #MAILTO=ops@example.org

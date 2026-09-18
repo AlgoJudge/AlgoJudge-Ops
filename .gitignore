@@ -26,7 +26,7 @@ state/*
 !state/.gitkeep
 
 # The pre-configuration a real installation fills in. The directory is committed
-# so the mount never fails; what an organisation puts in it is theirs.
+# so the mount never fails; what an organization puts in it is theirs.
 preconfig/*
 !preconfig/.gitkeep
 !preconfig/README.md
