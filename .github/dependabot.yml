@@ -1,20 +1,11 @@
 version: 2
-updates:
-  - package-ecosystem: docker-compose
-    directory: /
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7
-    ignore:
-      # An installation follows the release line it chose in .env, through
-      # the moving `0` tag or a pinned one.
-      - dependency-name: algojudge/*
-      # A PostgreSQL major changes the on-disk format. Upgrading is a
-      # migration, not a tag change.
-      - dependency-name: postgres
-        update-types: [version-update:semver-major]
 
+# compose.yaml names every image through a variable with a default, such as
+# postgres:${POSTGRES_TAG:-18}, and Dependabot reads none of them. A
+# docker-compose entry here finds no dependencies, so there is none: the
+# PostgreSQL and nginx tags are not watched by Dependabot.
+
+updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
