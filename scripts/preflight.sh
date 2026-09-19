@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Refuses now, with a sentence, rather than half way up with a stack trace.
+# Refuses now, with a sentence, rather than halfway up with a stack trace.
 #
 #     ./scripts/preflight.sh
 #
@@ -102,7 +102,7 @@ if runs_service runner-1 runner; then
             case "$cache/" in
                 "${RUNNER_WORK_DIR:-/dev/null}"/*)
                     report "RUNNER_CACHE_DIR ($cache) is inside RUNNER_WORK_DIR. The scheduled
-       clean-up removes directories under the work directory by age, and the
+       cleanup removes directories under the work directory by age, and the
        cache is not scratch: it would be deleted while a Runner was reading it.
        Put it somewhere of its own."
                     ;;

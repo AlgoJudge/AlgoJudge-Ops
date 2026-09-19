@@ -36,7 +36,7 @@ fi
 
 if [ -e "$CERTS/privkey.pem" ] || [ -e "$CERTS/fullchain.pem" ]; then
     warn "one of the two files is there without the other — an earlier run failed
-       half way. Removing both and starting again."
+       halfway. Removing both and starting again."
     rm -f "$CERTS/privkey.pem" "$CERTS/fullchain.pem"
 fi
 
@@ -53,7 +53,7 @@ domain=${1:-localhost}
 # documented escape — MSYS strips one slash and openssl sees what was meant.
 #
 # `MSYS_NO_PATHCONV=1` is **not** the fix here, though it is elsewhere in this
-# repository: it would also stop the two output paths being converted, and
+# repository: it would also stop the two output paths from being converted, and
 # openssl is a Windows binary that cannot open `/c/Users/...`.
 subject="/CN=$domain"
 case "${OSTYPE:-}" in

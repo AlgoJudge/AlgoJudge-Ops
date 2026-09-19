@@ -45,7 +45,7 @@ product_services() {
 
 # The four language images come from `lib/images.sh`, sourced above: they are
 # not services, so every script that wants them has to name them by hand, and
-# one spelling is what stops a Runner pulling one image and judging in another.
+# one spelling is what stops a Runner from pulling one image and judging in another.
 
 # The repository a service's own image is named after, as it appears in a
 # reference: leading slash and trailing colon, because `algojudge-runner` is a
@@ -125,7 +125,7 @@ $dry_run || compose pull --quiet
 # **The four language images by hand, because `compose pull` does not reach
 # them.** They are not services -- they are values the Runner is given, and it
 # starts each judged run in one of them. An installation updated without this
-# kept last year's toolchain for ever, with every container new and nothing to
+# kept last year's toolchain forever, with every container new and nothing to
 # see. Measured 2026-09-08.
 #
 # **Since 2026-09-16 the Runner fetches them too**, unconditionally, at start.
@@ -138,7 +138,7 @@ fi
 
 # **Compared as image ids, because a moving tag is the normal case.**
 # `SERVER_TAG=0` points at a different image after every release, so "is the tag
-# the same" would answer yes for ever.
+# the same" would answer yes forever.
 #
 # **Against what Compose would run, not against what the container came from.**
 # `.Config.Image` is the reference this container was *created* from, and asking
@@ -151,7 +151,7 @@ fi
 # `config --images <service>` returns the service's image **and its
 # dependencies'**, and **the order is not something to rely on**: measured
 # 2026-09-08, Compose v5.3.1 prints `algojudge-server:0` before `postgres:18`
-# and v5.4.0 prints them the other way round. Taking the first line therefore
+# and v5.4.0 prints them the other way around. Taking the first line therefore
 # compared the Server against the database on one of the two, and reported an
 # update on every single run. The line is picked by the repository the service's
 # image is named after instead, and an answer that matches nothing falls back to

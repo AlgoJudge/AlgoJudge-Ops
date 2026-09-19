@@ -79,7 +79,7 @@ when the container started — set it in `.env` and recreate the Server.
 In order of how often it is each one:
 
 1. **The Runner has not been approved.** Its log says `waiting: this Runner has
-   not been approved yet`, and it will say that for ever. Approve it in the panel
+   not been approved yet`, and it will say that forever. Approve it in the panel
    under **Runners**.
 2. **`AJ_Sandbox__Image__*` points at images that do not exist.** Compiled in,
    the Runner looks for `algojudge/lang-*:local`, which only a development host
@@ -244,7 +244,7 @@ than the Server.** The log line names a registration rather than a setting —
 the Server refused the registration: the Server refused with 403: runner.nonce.unknown
 ```
 
-— and it appears only from the **second** start onwards, because the identity
+— and it appears only from the **second** start on, because the identity
 volume is what makes the Server recognize the key. A Server that requires a
 signed re-registration and an image that predates that requirement cannot agree,
 the refusal is not one a Runner retries, and `preflight.sh` cannot see it because
@@ -459,7 +459,7 @@ is how this was found.
 
 ## `docker compose ps` shows no health for a Runner
 
-Both Runners show an empty health column, for ever, and neither is a fault. The
+Both Runners show an empty health column, forever, and neither is a fault. The
 Runner's image declares no health check and the External Runner's cannot have one
 — it is `distroless/static`, with no shell, no curl and no wget, and it listens
 on no port. `docker compose up --wait` therefore calls both ready as soon as they

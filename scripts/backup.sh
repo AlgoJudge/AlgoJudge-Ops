@@ -54,8 +54,8 @@ done
 
 # **`--until` is not optional, and it is a review date rather than a deletion
 # date.** Nothing in `keep/` is ever removed automatically — deleting a copy
-# somebody deliberately preserved is not a decision a cron job may take — so what
-# stops named holds quietly reintroducing unbounded history is that every overdue
+# somebody deliberately preserved is not a decision a cron job may make — so what
+# stops named holds from quietly reintroducing unbounded history is that every overdue
 # one is reported on every run. Without a date there is nothing to report.
 if [ -n "$keep_label" ]; then
     [ -n "$keep_until" ] || die "--keep needs --until <date>. It is a review date, not a
@@ -162,7 +162,7 @@ add_cleanup reopen
 log "dumping to $(basename "$target")"
 
 # `-Fc`: custom format, compressed, and the only one `pg_restore` can restore
-# selectively from. Written to a `.partial` first so a run killed half way
+# selectively from. Written to a `.partial` first so a run killed halfway
 # never leaves something that looks like a backup.
 if ! compose exec -T postgres pg_dump -Fc \
         -U "$(setting POSTGRES_USER algojudge)" \
@@ -175,7 +175,7 @@ fi
 #
 # **Two checks, because the cheap one does not prove what it looks like it
 # proves.** A custom-format archive keeps its table of contents at the *front*,
-# so `pg_restore --list` succeeds on a file that was truncated half way through
+# so `pg_restore --list` succeeds on a file that was truncated halfway through
 # the data — it reads the header and stops. It still catches an empty file, a
 # write that failed on the first block, and anything that is not a PostgreSQL
 # archive at all.
@@ -248,7 +248,7 @@ fi
 #
 # **Two bounds, and neither alone is enough.** The count policy answers "how far
 # back can I go"; the size budget answers "how much disk will this cost". A
-# backup directory that fills the disk stops PostgreSQL writing, which turns a
+# backup directory that fills the disk stops PostgreSQL from writing, which turns a
 # safety mechanism into the outage it was meant to protect against.
 #
 # The three counts are a **union of sets, not a sum**: one file can be the newest
@@ -256,7 +256,7 @@ fi
 # A file no rule claims is deleted.
 #
 # **"Days on which a dump exists", not "the last N calendar days."** A host
-# switched off for a fortnight would, under the calendar reading, come back
+# switched off for two weeks would, under the calendar reading, come back
 # holding no daily history at all.
 
 survivors=$(mktemp)

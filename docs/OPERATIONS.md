@@ -137,7 +137,7 @@ That signs everybody out, everywhere, and is the point of it.
 
 The count policy answers *how far back can I go*; the size budget answers *how
 much disk will this cost*. A backup directory that fills the disk stops
-PostgreSQL writing, which turns a safety mechanism into the outage it was meant
+PostgreSQL from writing, which turns a safety mechanism into the outage it was meant
 to prevent.
 
 | Bound | Set by | |
@@ -163,7 +163,7 @@ today's dump is simultaneously the newest daily, the newest of its week and the
 newest of its month. The exact number moves with where today falls in the week.
 
 **"Days on which a dump exists", not "the last N calendar days."** A host
-switched off for a fortnight would, under the calendar reading, come back with no
+switched off for two weeks would, under the calendar reading, come back with no
 daily history at all; under this one it comes back holding its seven most recent
 dumps, merely spread over a longer span.
 
@@ -186,9 +186,9 @@ contest, the end of a term, and the moment before a large migration.
 
 **`--until` is mandatory and it is a review date, not a deletion date.** Nothing
 in `keep/` is ever removed automatically — deleting a copy somebody deliberately
-preserved is not a decision a cron job may take. What happens instead is that
+preserved is not a decision a cron job may make. What happens instead is that
 every overdue hold is **reported on every run**, so each deep copy stays a
-conscious, renewed decision. That is what stops named holds quietly
+conscious, renewed decision. That is what stops named holds from quietly
 reintroducing the deep history the size bound removed: a rotation reaching two
 months means nothing if an unreviewed hold from three years ago sits beside it.
 
@@ -406,7 +406,7 @@ what they take turns a stop back into a kill**, and a killed Runner leaves its
 job to the lease. At the Compose default of 300s a `docker compose down` spends
 five minutes in silence instead: measured on this stack, **302 s against 32 s**.
 
-**Two things stop that change reaching an installation that already exists**,
+**Two things stop that change from reaching an installation that already exists**,
 and both are worth knowing before you conclude it did not work:
 
 - **Docker records the timeout on the container when it is created.** Until the
@@ -419,7 +419,7 @@ and both are worth knowing before you conclude it did not work:
   gets. Change it there.
 
 A clean drain is still `maintenance.sh on --wait-closed` on the **Server**
-first, which `update.sh` does — it stops new work reaching a Runner at all,
+first, which `update.sh` does — it stops new work from reaching a Runner at all,
 which is tidier than every Runner handing back what it had just been given.
 
 **The External Runner handles `SIGTERM` too, and hands back its whole pool in
@@ -599,7 +599,7 @@ and then in `.env`; there is nothing to revoke here.
 account and its own identity volume, not a second value in a list.
 
 **It has no health check and no shell.** `docker compose ps` shows an empty
-health column for it for ever; `docker compose exec` does not work on it at all.
+health column for it forever; `docker compose exec` does not work on it at all.
 `docker compose logs -f external-runner` is the whole of the instrumentation, and
 it says what it registered as, what it declared, and what it is waiting for.
 
