@@ -255,7 +255,8 @@ minutes costs nothing. A long one costs the External Runner's pending set, which
 is the duplicate submission the *Maintenance* section describes.
 
 **Rehearse it.** A backup with no tested restore is a hypothesis. The honest
-rehearsal is on a spare host: clone this repository, copy `.env` and one dump,
+rehearsal is on a spare host: clone this repository, check out the release the
+installation runs, copy `.env` and one dump,
 `docker compose up -d --wait`, `./scripts/restore.sh`, then sign in and look at
 something you recognize.
 
@@ -264,15 +265,51 @@ something you recognize.
 ```bash
 ./scripts/update.sh
 ./scripts/update.sh --dry-run
+./scripts/update.sh --no-git
 ```
 
-1. `git pull` — new Compose files and scripts, never new image versions.
+1. **The newest release of this repository** — new Compose files and scripts,
+   never new image versions. Only a `vX.Y.Z` tag, only forward, never `main`:
+   from a release to any higher one, and from a checkout of `main` only to a
+   release cut from `main` after it. A move counts as a change, so the swap
+   applies the new release's files even when no image moved; the rest of the
+   run is the new release's own `update.sh`; and if the swap fails, the
+   repository goes back with the images. A local change to a file the release
+   also changes, or an untracked file it now tracks, stops the move with a
+   warning; any other local change is carried along. The remote has to be named
+   `origin`, and the checkout has to belong to the user running the script.
+   `--dry-run` says where it would go; `--no-git` leaves the repository alone.
 2. `docker compose pull` — **the longest step, and it costs no downtime.**
 3. Nothing new? Stop. Nothing is closed.
 4. Back up.
 5. Close, and wait for the drain.
 6. `up -d`, wait for healthy.
 7. Healthy: record the digests. Not healthy: roll back.
+8. Reopen, and prune only this project's images.
+
+The outage is steps 5 to 7 — measured at about eighteen seconds on a small
+installation, most of it the drain.
+
+**Update every host in the same window, and the Runner images with the Server.**
+The Server and the Runners speak a protocol that changes between versions, and
+the tags this stack ships are moving majors pulled independently — so nothing
+stops `update.sh` from taking a new Server against a Runner image from last
+month. A Runner too old for the Server it registers against is refused, and a
+refused registration is not a retry: the process exits and `restart:
+unless-stopped` turns it into a loop that `preflight.sh` cannot see, because
+nothing is wrong with the configuration. `docs/TROUBLESHOOTING.md` under *the
+external Runner restarts every few seconds* has the log line.
+
+This matters most on the arrangement `docs/INSTALL.md` recommends for a public
+installation, where the Runners are on hosts of their own and reach the Server
+over `SERVER_URL`. Those hosts have their own `update.sh`, and a host that is not
+updated in step goes quiet on its **next restart** rather than immediately —
+which is the shape of failure nobody notices until a contest.
+
+**Versions are tags in `.env` and digests in `state/current.lock`.** The tag says
+what was asked for; the digest says what is running, and is what a rollback
+restores. Digests cannot live in this repository — it is a product many
+organizations deploy independently, and none of them can commit to it.
 
 ### Updating past 2026-09-16, when the Runners moved into volumes
 
@@ -310,31 +347,6 @@ docker volume rm algojudge_runner-cache
 ```
 
 `docker volume ls` says whether you have one.
-8. Reopen, and prune only this project's images.
-
-The outage is steps 5 to 7 — measured at about eighteen seconds on a small
-installation, most of it the drain.
-
-**Update every host in the same window, and the Runner images with the Server.**
-The Server and the Runners speak a protocol that changes between versions, and
-the tags this stack ships are moving majors pulled independently — so nothing
-stops `update.sh` from taking a new Server against a Runner image from last
-month. A Runner too old for the Server it registers against is refused, and a
-refused registration is not a retry: the process exits and `restart:
-unless-stopped` turns it into a loop that `preflight.sh` cannot see, because
-nothing is wrong with the configuration. `docs/TROUBLESHOOTING.md` under *the
-external Runner restarts every few seconds* has the log line.
-
-This matters most on the arrangement `docs/INSTALL.md` recommends for a public
-installation, where the Runners are on hosts of their own and reach the Server
-over `SERVER_URL`. Those hosts have their own `update.sh`, and a host that is not
-updated in step goes quiet on its **next restart** rather than immediately —
-which is the shape of failure nobody notices until a contest.
-
-**Versions are tags in `.env` and digests in `state/current.lock`.** The tag says
-what was asked for; the digest says what is running, and is what a rollback
-restores. Digests cannot live in this repository — it is a product many
-organizations deploy independently, and none of them can commit to it.
 
 ### Rollback
 

@@ -176,9 +176,21 @@ and pass `-p` to every later command, including the scripts. Better still, put
 ```bash
 git clone https://github.com/AlgoJudge/AlgoJudge-Ops.git /opt/algojudge-ops
 cd /opt/algojudge-ops
+git checkout "$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
 cp .env.example .env
 chmod 600 .env
 ```
+
+**The newest release, not `main`.** `main` is where the next release is being
+written, and what it holds has not been released. `scripts/update.sh` keeps to
+the same rule: it moves the checkout only from a release to a newer one. From
+here on, read this file in the checkout, which describes the release you have.
+
+**`v0.1.0` is the exception.** Its own `update.sh` predates the rule: it runs
+`git pull`, which on a release checkout only warns and leaves the files as they
+are. Move such an installation to the next release by hand once —
+`git fetch --tags` and `git checkout <tag>` — and it follows releases from
+there.
 
 **Two values have no default** and the stack will not start without them.
 `.env.example` explains each where it sits; in short:
@@ -541,7 +553,9 @@ docker compose exec -T server aj-admin config apply
 ### Runners on their own machines
 
 The application host runs `COMPOSE_PROFILES=edge,app,data`; each Runner host
-clones this repository and runs `COMPOSE_PROFILES=runner` with
+clones this repository, checks out the release the application host runs
+(`git tag --points-at HEAD` there names it), and runs `COMPOSE_PROFILES=runner`
+with
 
 ```ini
 SERVER_URL=https://your.domain

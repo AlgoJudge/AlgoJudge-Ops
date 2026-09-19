@@ -12,8 +12,8 @@ delivered artifact you clone, configure through `.env`, and run. Two things
 follow, and they run through everything here:
 
 - **The default configuration works after `git clone`, `cp .env.example .env`
-  and `docker compose up -d`**, with two values filled in and no Compose file
-  edited.
+  and `docker compose up -d`**, with the required values filled in and no
+  Compose file edited.
 - **It does not impose operational policy.** It ships scripts and an example
   crontab; whether and when to run them is yours. The update entry is commented
   out on purpose.
@@ -63,11 +63,19 @@ host run narrower or fewer — `docs/INSTALL.md` has the arithmetic.
 ```bash
 git clone https://github.com/AlgoJudge/AlgoJudge-Ops.git /opt/algojudge-ops
 cd /opt/algojudge-ops
+git checkout "$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
 cp .env.example .env
 ```
 
-Fill in the two values that have no default — `AJ_ADMIN_TOKEN` and
-`POSTGRES_PASSWORD` — then:
+**The newest release, not `main`.** `main` is where the next release is being
+written. From here on, follow this README and `docs/INSTALL.md` in the
+checkout: they describe the release you have, and this copy may describe the
+next one. `scripts/update.sh` moves an installation only from one release to a
+newer one — except at `v0.1.0`, whose own `update.sh` predates that rule; move
+it to the next release by hand once, with `git fetch --tags` and
+`git checkout <tag>`.
+
+Fill in the values `.env.example` marks as having no default, then:
 
 ```bash
 ./scripts/render-tls.sh your.domain    # only if you have no certificate yet
