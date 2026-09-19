@@ -28,6 +28,7 @@ for argument in "$@"; do
         *) die "unknown argument: $argument" ;;
     esac
 done
+args=("$@")
 
 LOCK_FILE="$ROOT/state/current.lock"
 
@@ -107,14 +108,96 @@ digests() {
 # repository. The decision — why digests in Git do not apply to a product many
 # people deploy independently — is `docs/specs/DEPLOYMENT.md` in the AlgoJudge
 # workspace, not a path in this repository.
+#
+# **A release, and never backward.** A release is a `vX.Y.Z` tag, which only an
+# organization admin can create. `main` is where the next release is written, and
+# a merge there is not a release: an installation that followed `main` ran every
+# merge on its next update. So the checkout moves only to the newest release,
+# only when that release is ahead of it, and never on `--dry-run`:
+#
+# - **from a release tag, to any higher release.** A patch cut on a release
+#   branch and the next release cut on `main` are both ahead, though neither
+#   contains the other;
+# - **from anywhere else** — a checkout of `main` made before this rule — **only
+#   to a release that contains it.** Moving to an older one would take back what
+#   this installation already runs.
+#
+# A pre-release such as `v0.2.0-rc.1` is never taken.
+#
+# **Tags are fetched with `--force --prune-tags`**, so the installation sees the
+# tags as they are upstream: a release re-cut there is taken, one withdrawn there
+# is not, and a `v*` tag made by hand here cannot hold it in place. Without
+# `--force` a single moved tag fails the whole fetch, on every run after.
+#
+# **After a move, the rest of the update is the new release's**: this script
+# `exec`s the `update.sh` it has just checked out, with `--no-git`. Its own body
+# would otherwise run steps 2 to 7 — the services it compares, the language
+# images it records — as the old release knew them, against the new release's
+# compose files. The lock survives: `flock` holds file descriptor 9, which `exec`
+# keeps, and `ALGOJUDGE_LOCK_HELD` is exported.
+
+release_tags() {
+    git -C "$ROOT" tag --list 'v*' --sort=-v:refname "$@" |
+        grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true
+}
+
+ops_moved=""
+
+follow_release() {
+    local newest current from
+    if ! git -C "$ROOT" fetch --quiet --force --prune --prune-tags --tags origin; then
+        warn "git fetch failed; git's reason is on the lines above. Usually the remote
+       is not named origin, or the checkout belongs to another user than the one
+       running this. Carrying on with the files as they are."
+        return 0
+    fi
+    newest=$(release_tags | head -1)
+    if [ -z "$newest" ]; then
+        log "  no release yet; the repository stays as it is"
+        return 0
+    fi
+    current=$(release_tags --points-at HEAD | head -1)
+    if [ "$current" = "$newest" ]; then
+        log "  at $newest, the newest release"
+        return 0
+    fi
+    if [ -z "$current" ] && ! git -C "$ROOT" merge-base --is-ancestor HEAD "$newest"; then
+        # On a branch upstream has — a checkout of `main` from before this rule —
+        # it waits for a release cut from there. Commits upstream does not have
+        # are somebody's own, and nothing will ever contain them.
+        if [ -n "$(git -C "$ROOT" branch -r --contains HEAD 2>/dev/null)" ]; then
+            log "  no release contains this checkout yet ($newest is the newest), so it stays"
+        else
+            warn "this checkout has commits upstream does not have, so no release will
+       contain it and it cannot follow $newest. See: git -C $ROOT status"
+        fi
+        return 0
+    fi
+    if $dry_run; then
+        log "  --dry-run: would move to $newest"
+        ops_moved=$newest
+        return 0
+    fi
+    from=$(git -C "$ROOT" rev-parse HEAD)
+    if ! git -C "$ROOT" -c advice.detachedHead=false checkout --quiet "$newest"; then
+        warn "git checkout $newest failed; git's reason is on the lines above. Usually a
+       local change to a file the release changes, or an untracked file it now
+       tracks. Carrying on with the files as they are."
+        return 0
+    fi
+    log "  moved to $newest; continuing with its own update.sh"
+    export ALGOJUDGE_MOVED_TO=$newest ALGOJUDGE_MOVED_FROM=$from
+    exec "$ROOT/scripts/update.sh" --no-git ${args[@]+"${args[@]}"}
+}
 
 if $git_pull && [ -d "$ROOT/.git" ]; then
-    log "updating the repository"
-    if ! git -C "$ROOT" pull --ff-only; then
-        warn "git pull --ff-only failed. Local changes, or a rewritten branch. Carrying
-       on with the files as they are — nothing here needs the repository to be
-       current."
-    fi
+    log "looking for a newer release of this repository"
+    follow_release
+elif [ -n "${ALGOJUDGE_MOVED_TO-}" ] &&
+    [ "$(release_tags --points-at HEAD | head -1)" = "$ALGOJUDGE_MOVED_TO" ]; then
+    # The run that moved here. Checked against HEAD, so a value left in somebody's
+    # environment cannot make an ordinary run believe it moved.
+    ops_moved=$ALGOJUDGE_MOVED_TO
 fi
 
 # ── 2. The images ───────────────────────────────────────────────────────────
@@ -206,12 +289,17 @@ if [ -s "$LOCK_FILE" ] && judges_here; then
     done
 fi
 
+# **A new release counts even when no image moved.** Its compose files, its
+# nginx configuration and its scripts are the change, and only the swap below
+# puts them in front of the running containers.
+[ -z "$ops_moved" ] || changed="$changed ops@$ops_moved"
+
 if [ -z "$changed" ]; then
     log "nothing new. Not closing anything."
     exit 0
 fi
 
-log "new images for:$changed"
+log "changed:$changed"
 
 if $dry_run; then
     log "--dry-run: stopping here."
@@ -298,6 +386,16 @@ fi
 
 warn "the stack did not come back healthy within 120s. Rolling back."
 compose logs --no-color --tail 50 server >"$ROOT/state/failed-update.log" 2>&1 || true
+
+# **The files go back with the images.** After a move to a new release, the old
+# images under the new release's compose files are a combination nobody tested;
+# the rollback runs from the checkout the old images came with.
+if [ -n "$ops_moved" ] && [ -n "${ALGOJUDGE_MOVED_FROM-}" ]; then
+    log "returning the repository to ${ALGOJUDGE_MOVED_FROM:0:12}, where it was before $ops_moved"
+    git -C "$ROOT" -c advice.detachedHead=false checkout --quiet "$ALGOJUDGE_MOVED_FROM" ||
+        warn "could not return the repository to $ALGOJUDGE_MOVED_FROM; the rollback runs
+       from $ops_moved's files."
+fi
 
 if "$ROOT/scripts/rollback.sh" --from-update; then
     "$ROOT/scripts/maintenance.sh" off || true

@@ -3,12 +3,14 @@
 For whoever cuts the release. An operator standing an installation up wants
 [INSTALL.md](INSTALL.md).
 
-## This repository has no version of its own
+## What a tag here is
 
-**It builds nothing and publishes nothing.** Every image is pulled from GHCR by
-tag, and the only versions that matter here are the ones `.env.example` asks
-for. A `v0.1.0` tag on this repository is a name for a known-good stack somebody
-can clone — no workflow runs on it, and nothing reaches a registry.
+**It builds nothing, and its tag is still a release.** Every image is pulled
+from GHCR by tag, at the versions `.env.example` asks for. A `vX.Y.Z` tag here
+is what every installation runs next: `scripts/update.sh` checks out the newest
+one on its next run, and the nightly `backup.sh` then runs from it. No workflow
+runs on the tag and nothing reaches a registry; pushing it is the release. A
+pre-release such as `v0.2.0-rc.1` is never taken.
 
 **Four tags are the whole of it**, in `.env.example` and mirrored as the
 defaults in `compose.yaml`:
@@ -65,6 +67,16 @@ ignores it and judges one test at a time, exactly as before.
 **The section above is what blocks a tag; this is what a tag changes**, and it
 has to be said out loud on release day rather than discovered by somebody whose
 score moved. Nothing here stops the release.
+
+- **Installations follow releases, not `main`.** From this tag on,
+  `update.sh` moves the checkout only to the newest `vX.Y.Z`. An installation
+  made from `v0.1.0` has that tag's `update.sh`, which runs `git pull`, warns on
+  the release checkout and stays; move it once by hand — `git fetch --tags` and
+  `git checkout <this tag>` — and it follows releases from then on. An
+  installation that cloned `main` took the new `update.sh` on its first update
+  after the change and has stayed on that commit since; it moves to this tag on
+  its next update, because the tag contains it — which holds only for a tag cut
+  from `main`.
 
 - **A submission has to end by itself to be accepted**, since AlgoJudge-Runner
   #62 on 2026-09-16. A checker or an interactor finishing no longer stops the
