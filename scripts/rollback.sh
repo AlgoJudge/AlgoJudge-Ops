@@ -77,7 +77,7 @@ fi
 # **Each service is pinned to its digest through an override**, rather than by
 # editing `.env`. Writing a digest into `.env` would leave the installation
 # pinned after somebody had forgotten why, and the next `update.sh` would find
-# "nothing new" for ever.
+# "nothing new" forever.
 
 # **`lang:` lines are not services.** They record the four language images the
 # Runner was judging with, which `compose` has no concept of: they reach it as
@@ -127,7 +127,7 @@ $from_update || "$ROOT/scripts/maintenance.sh" on "rollback" --wait-closed || tr
 # with a bare `compose up`, and this is now the same.
 #
 # **`compose.override.yaml` has to be named as well**, because setting
-# `COMPOSE_FILE` at all is what stops Compose reading it by itself. It is not
+# `COMPOSE_FILE` at all is what stops Compose from reading it by itself. It is not
 # only somebody's extra service now: `compose.directories.yaml` is copied to it
 # by an installation whose daemon cannot mount a volume's subdirectory, and
 # dropping it here would start the Runners on empty volumes instead of the host

@@ -190,7 +190,7 @@ POSTGRES_PASSWORD=       # openssl rand -base64 36, a different one
 
 **There is no third.** `RUNNER_WORK_DIR` was one until 2026-09-16, when the
 Runners' cache and scratch became Docker volumes: there is no host path to
-choose any more, and nothing to create or permission before the first start.
+choose anymore, and nothing to create or permission before the first start.
 
 ## Where the Runners keep their bytes
 
@@ -231,7 +231,7 @@ Runner hands it to the Docker daemon and **a path the daemon cannot open
 becomes an empty directory rather than an error**, so every submission would
 run against nothing with no test failing visibly. `RUNNER_CACHE_DIR` has a
 working default; keep it **out of** `RUNNER_WORK_DIR`, whose first-level
-directories the scheduled clean-up removes by age. `preflight.sh` checks all
+directories the scheduled cleanup removes by age. `preflight.sh` checks all
 three and says which one is wrong.
 
 ```bash
@@ -297,7 +297,7 @@ docker compose up -d --wait
 
 or `make up`, which is those three.
 
-`preflight.sh` refuses now, with a sentence, rather than half way up: an empty
+`preflight.sh` refuses now, with a sentence, rather than halfway up: an empty
 password, a missing token, a CIDR with host bits, a relative work directory, a
 `DOCKER_GID` that does not match the socket.
 
@@ -450,7 +450,7 @@ two in how fast a contest is judged, and the difference is in the problems.
 
 **A new Runner registers and then waits.** It is not a fault and there is no
 timeout; nothing is judged until an administrator approves it, which is what
-stops somebody attaching a machine of their own to your installation.
+stops somebody from attaching a machine of their own to your installation.
 
 In the panel: **Runners**, and approve each of the two that appeared — four,
 with `runner-extra`. Their logs say `waiting: this Runner has not been approved
@@ -503,7 +503,7 @@ compilers, their limits, their tests. What you get back is what they said.
 It needs **no inbound port, no Docker socket and no work directory**: it dials
 out to the Server and to the archive, and accepts nothing. It has no health
 check either — the image has no shell to run one with — so `docker compose ps`
-shows an empty health column for it for ever, and its log is the instrument:
+shows an empty health column for it forever, and its log is the instrument:
 
 ```bash
 docker compose logs -f external-runner
@@ -564,7 +564,7 @@ panel under one set of names. On a host with fewer physical cores, run narrower
 or fewer: see *How many Runners, and how wide* above.
 
 The Runner opens every connection itself — it needs no inbound port and works
-from behind a domestic router. Each one registers separately and needs its own
+from behind a home router. Each one registers separately and needs its own
 approval, so a two-Runner host is two approvals.
 
 **This is the recommended arrangement for a public installation.** In T1 the

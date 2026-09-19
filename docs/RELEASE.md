@@ -64,7 +64,7 @@ ignores it and judges one test at a time, exactly as before.
 
 **The section above is what blocks a tag; this is what a tag changes**, and it
 has to be said out loud on release day rather than discovered by somebody whose
-mark moved. Nothing here stops the release.
+score moved. Nothing here stops the release.
 
 - **A submission has to end by itself to be accepted**, since AlgoJudge-Runner
   #62 on 2026-09-16. A checker or an interactor finishing no longer stops the
@@ -73,7 +73,7 @@ mark moved. Nothing here stops the release.
   neither is accepted however satisfied the judge was. A judge that **refused**
   still outranks what stopped the run, so its comment survives.
 
-  **It is a verdict change and it moves marks.** The behavior it replaces was
+  **It is a verdict change and it moves scores.** The behavior it replaces was
   not one answer: the judge's exit and the output cap are decided in the same
   loop, so the same submission was `Accepted` on an idle host and `Output limit
   exceeded` on a busy one — measured at 24% of runs under load, 0% idle. Code

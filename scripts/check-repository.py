@@ -194,7 +194,7 @@ def the_product_tags_agree(problems):
     on every product image with `manifest unknown`.
 
     `POSTGRES_TAG` had this check and the four that move with our own releases
-    did not, which is the wrong way round: theirs is somebody else's version
+    did not, which is the wrong way around: theirs is somebody else's version
     and moves rarely, ours moves every release.
     """
     compose = read("compose.yaml")

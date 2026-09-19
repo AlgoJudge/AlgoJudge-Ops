@@ -1,7 +1,7 @@
 # The AlgoJudge stack, as an installation runs it.
 #
 #     cp .env.example .env      # then fill in the values it says are required
-#     ./scripts/preflight.sh    # refuses now rather than half way up
+#     ./scripts/preflight.sh    # refuses now rather than halfway up
 #     docker compose up -d --wait
 #
 # **One file, and the topology is chosen with `COMPOSE_PROFILES` in `.env`.**
@@ -401,7 +401,7 @@ services:
       - ${DOCKER_GID:-999}
 
     # **Long enough for the Runner to say what it is doing.** On `SIGTERM` it
-    # stops the evaluation in hand, gives the job back so another Runner can
+    # stops the evaluation in progress, gives the job back so another Runner can
     # take it at once, and clears the containers it had started. That is a
     # handful of HTTP calls and a few container removals -- seconds, not
     # minutes -- but a grace shorter than they take is a kill, and a killed

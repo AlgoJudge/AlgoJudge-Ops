@@ -112,7 +112,7 @@ log "restoring"
 # **No filename, and no `MSYS_NO_PATHCONV` here.** `pg_restore` reads standard
 # input when given no file, which is the form that survives `docker compose exec
 # -T`. Setting `MSYS_NO_PATHCONV=1` to protect a `/dev/stdin` argument also stops
-# `--project-directory` being converted, so Compose cannot find `compose.yaml`
+# `--project-directory` from being converted, so Compose cannot find `compose.yaml`
 # and the restore **silently does nothing** while every check afterwards passes
 # on data that was never touched.
 #
