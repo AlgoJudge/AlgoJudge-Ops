@@ -178,6 +178,24 @@ services:
       # installation. See `docs/INSTALL.md`.
       AJ_Preconfiguration__Path: /etc/algojudge/preconfig
 
+      # **The rest of the Server's settings.** Unlike the Runners', an empty
+      # value here is not an absent one -- .NET binds it -- so each numeric
+      # default is written out and matches the image's own.
+      AJ_Maintenance__ForceAfterSeconds: ${MAINTENANCE_FORCE_AFTER:-300}
+      AJ_Limits__MaxRequestBytes: ${MAX_REQUEST_BYTES:-134217728}
+      AJ_Retention__SessionOriginDays: ${RETENTION_SESSION_ORIGIN_DAYS:-30}
+      AJ_Retention__SubmissionOriginDays: ${RETENTION_SUBMISSION_ORIGIN_DAYS:-365}
+      AJ_Events__SendTimeoutSeconds: ${EVENTS_SEND_TIMEOUT:-5}
+      AJ_Files__CollectAtHourUtc: ${FILES_COLLECT_AT_HOUR_UTC:-6}
+      AJ_Storage__Migration__StartHourUtc: ${STORAGE_MIGRATION_START_HOUR_UTC:-2}
+      AJ_Storage__Migration__BudgetMinutes: ${STORAGE_MIGRATION_BUDGET_MINUTES:-30}
+      AJ_Storage__Migration__GraceMinutes: ${STORAGE_MIGRATION_GRACE_MINUTES:-60}
+
+      # Strings, where empty is read as unset.
+      AJ_Storage__SpoolPath: ${STORAGE_SPOOL_PATH-}
+      AJ_DataProtection__Kind: ${DATA_PROTECTION_KIND-}
+      AJ_UvaExplorer__Origin: ${UVA_EXPLORER_ORIGIN-}
+
     volumes:
       # Optional, and `:ro`. The directory exists in this repository so the mount
       # never fails; an empty one configures nothing.
@@ -341,6 +359,23 @@ services:
       #
       # **With the project name**, as the scratch above.
       AJ_Cache__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-cache
+
+      # **The rest of the Runner's settings, and empty is the image's own
+      # default for every one of them.** The Runner treats an empty value as an
+      # absent one, so a line left commented in `.env` changes nothing.
+      AJ_Cache__MaxBytes: ${RUNNER_CACHE_MAX_BYTES-}
+      AJ_Lease__RequestSeconds: ${RUNNER_LEASE_SECONDS-}
+      AJ_Heartbeat__Seconds: ${RUNNER_HEARTBEAT_SECONDS-}
+      AJ_Poll__MinSeconds: ${RUNNER_POLL_MIN_SECONDS-}
+      AJ_Poll__MaxSeconds: ${RUNNER_POLL_MAX_SECONDS-}
+      AJ_Poll__WaitSeconds: ${RUNNER_POLL_WAIT_SECONDS-}
+      AJ_Runner__KeyPath: ${RUNNER_KEY_PATH-}
+      AJ_Sandbox__CgroupRoot: ${RUNNER_CGROUP_ROOT-}
+
+      # **Two that let a Runner judge without measuring**, which is wrong
+      # verdicts rather than an outage. Left to the image, both are off.
+      AJ_Sandbox__AllowCgroupV1: ${RUNNER_ALLOW_CGROUP_V1-}
+      AJ_Sandbox__AllowUnmeasured: ${RUNNER_ALLOW_UNMEASURED-}
 
       RUST_LOG: ${RUNNER_LOG:-info}
 
@@ -554,6 +589,27 @@ services:
       AJ_Runner__Tags: ${EXTERNAL_RUNNER_TAGS:-}
 
       RUST_LOG: ${EXTERNAL_RUNNER_LOG:-info}
+
+      # **What this Runner costs the archive.** The gap between two
+      # submissions is the politeness setting; the pool is a ceiling, not a
+      # rate. Empty is the image's own default for each.
+      AJ_External__SubmitMinIntervalSeconds: ${EXTERNAL_SUBMIT_MIN_INTERVAL-}
+      AJ_External__MaxPending: ${EXTERNAL_MAX_PENDING-}
+      AJ_External__PendingTimeoutSeconds: ${EXTERNAL_PENDING_TIMEOUT-}
+
+      # The rest, each empty meaning the image's default.
+      AJ_External__PollMinSeconds: ${EXTERNAL_POLL_MIN_SECONDS-}
+      AJ_External__PollMaxSeconds: ${EXTERNAL_POLL_MAX_SECONDS-}
+      AJ_External__PollEscalateAfterSeconds: ${EXTERNAL_POLL_ESCALATE_AFTER-}
+      AJ_External__LongPollEnabled: ${EXTERNAL_LONG_POLL-}
+      AJ_External__BaseUrl: ${EXTERNAL_JUDGE_BASE_URL-}
+      AJ_External__ApiBaseUrl: ${EXTERNAL_JUDGE_API_BASE_URL-}
+      AJ_External__UserId: ${EXTERNAL_JUDGE_USER_ID-}
+      AJ_Cache__MaxBytes: ${EXTERNAL_CACHE_MAX_BYTES-}
+      AJ_Lease__RequestSeconds: ${EXTERNAL_LEASE_SECONDS-}
+      AJ_Poll__MinSeconds: ${EXTERNAL_SERVER_POLL_MIN_SECONDS-}
+      AJ_Poll__MaxSeconds: ${EXTERNAL_SERVER_POLL_MAX_SECONDS-}
+      AJ_Poll__WaitSeconds: ${EXTERNAL_SERVER_POLL_WAIT_SECONDS-}
 
       # **The four poll intervals are not offered here**; the image's defaults
       # suit one account at the archive. Leases are renewed on a timer of their
