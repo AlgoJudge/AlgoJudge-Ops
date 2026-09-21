@@ -392,11 +392,28 @@ fi
 # ── Trusted proxies ─────────────────────────────────────────────────────────
 
 networks=${TRUSTED_PROXY_NETWORKS:-}
-if [ -z "$networks" ]; then
-    report "TRUSTED_PROXY_NETWORKS is empty. The Server refuses to start without it:
-       trusting every sender of X-Forwarded-For lets a visitor state their own
-       address. Use 'none' if nothing sits in front of it."
-elif [ "$networks" != "none" ]; then
+proxies=${TRUSTED_PROXY_PROXIES:-}
+
+# **`none` is a value for the proxies and not for the networks.** The Server
+# switches the middleware off when `none` is the whole of what it was told to
+# trust, and that test is on `Forwarded:KnownProxies`; reaching
+# `Forwarded:KnownNetworks`, the same word is read as a CIDR block and refused
+# at startup by name.
+if [ "$networks" = none ]; then
+    report "TRUSTED_PROXY_NETWORKS is 'none', which is not a network. The Server
+       refuses it at startup. To run with nothing in front of this Server, write
+       TRUSTED_PROXY_PROXIES=none and leave TRUSTED_PROXY_NETWORKS empty."
+elif [ "$proxies" = none ] && [ -n "$networks" ]; then
+    report "TRUSTED_PROXY_PROXIES is 'none' and TRUSTED_PROXY_NETWORKS is
+       '$networks'. The Server takes 'none' only when it is the whole of what it
+       has been told to trust, so it would read that network instead and keep the
+       forwarded headers on. Empty TRUSTED_PROXY_NETWORKS, or drop the 'none'."
+elif [ -z "$networks" ] && [ -z "$proxies" ]; then
+    report "TRUSTED_PROXY_NETWORKS and TRUSTED_PROXY_PROXIES are both empty. The
+       Server refuses to start: trusting every sender of X-Forwarded-For lets a
+       visitor state their own address. Name the network your proxy reaches this
+       Server from, or write TRUSTED_PROXY_PROXIES=none if nothing does."
+elif [ -n "$networks" ]; then
     # **A CIDR with host bits set is refused by the Server, by name.** .NET 10
     # normalizes `10.0.5.17/24` to `10.0.5.0/24` without a word, which turns a
     # typo meaning one machine into one meaning a laboratory — so the Server

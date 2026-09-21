@@ -140,7 +140,18 @@ services:
       # trusting only loopback records the proxy. This names the network nginx
       # reaches the Server from, which is why `edge` has a fixed subnet below.
       # Behind somebody else's proxy (T3), set it to theirs.
-      AJ_Forwarded__KnownNetworks: ${TRUSTED_PROXY_NETWORKS:-172.28.0.0/24}
+      #
+      # **The default applies to an absent value and not to an empty one**, so
+      # an installation that empties it gets an empty list and the refusal the
+      # sentence above describes, rather than this default put back under it.
+      AJ_Forwarded__KnownNetworks: ${TRUSTED_PROXY_NETWORKS-172.28.0.0/24}
+
+      # **Addresses rather than networks, and the one place the word `none`
+      # belongs.** The Server switches the forwarded headers off entirely when
+      # `none` is the whole of what it was told to trust, which is the honest
+      # setting for a Server nothing sits in front of; in the network list above
+      # the same word is read as a CIDR block and refused at startup.
+      AJ_Forwarded__KnownProxies: ${TRUSTED_PROXY_PROXIES-}
 
       # Where a **browser** reaches the application. Empty is right on one
       # origin; on two, a federated sign-in ends at a bare `/activities`
