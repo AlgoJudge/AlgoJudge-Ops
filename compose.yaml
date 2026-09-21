@@ -141,16 +141,13 @@ services:
       # reaches the Server from, which is why `edge` has a fixed subnet below.
       # Behind somebody else's proxy (T3), set it to theirs.
       #
-      # **The default applies to an absent value and not to an empty one**, so
-      # an installation that empties it gets an empty list and the refusal the
-      # sentence above describes, rather than this default put back under it.
+      # **The default applies to an absent value, not an empty one**, so
+      # emptying this empties the list.
       AJ_Forwarded__KnownNetworks: ${TRUSTED_PROXY_NETWORKS-172.28.0.0/24}
 
-      # **Addresses rather than networks, and the one place the word `none`
-      # belongs.** The Server switches the forwarded headers off entirely when
-      # `none` is the whole of what it was told to trust, which is the honest
-      # setting for a Server nothing sits in front of; in the network list above
-      # the same word is read as a CIDR block and refused at startup.
+      # Addresses rather than networks, and the one place `none` belongs: here
+      # it switches the forwarded headers off, in the list above it is read as
+      # a CIDR block and refused at startup.
       AJ_Forwarded__KnownProxies: ${TRUSTED_PROXY_PROXIES-}
 
       # Where a **browser** reaches the application. Empty is right on one
@@ -330,13 +327,8 @@ services:
       # delete each other's work in progress. Named here rather than as a path
       # for the same reason as the cache above: one spelling instead of two.
       #
-      # **The project name is part of the name the daemon knows.** Compose
-      # creates the key `runner-1-work` below as `<project>_runner-1-work`, and
-      # what is handed to a Runner is a name to ask the daemon about rather than
-      # a key to resolve -- so the prefix belongs here too. Compose resolves
-      # `COMPOSE_PROJECT_NAME` before it interpolates, from the `name:` at the
-      # top of this file, from the environment or from `-p`, so this expression
-      # is the same string the volume gets in all three.
+      # **With the project name**, because Compose creates the key below as
+      # `<project>_runner-1-work` and the Runner asks the daemon for a name.
       AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-1-work
 
       # **The cache, by the name the daemon knows it by.** A package is unpacked
@@ -344,12 +336,10 @@ services:
       # mounted read-only into the container that judges with them — so the
       # daemon has to be able to reach it. Named, it is reached by name and the
       # package travels as `subpath`, which is why there is no second spelling
-      # of this directory to keep in step with the mount below. The Runner asks
-      # the daemon at start whether it can open this, against a container it
-      # creates and never starts, and refuses to start when it cannot.
+      # of this directory to keep in step with the mount below. The Runner
+      # probes it at start and refuses to start if the daemon cannot open it.
       #
-      # **The project name is part of it**, as for the scratch above, so a
-      # second installation on one host reaches its own and not the first's.
+      # **With the project name**, as the scratch above.
       AJ_Cache__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-cache
 
       RUST_LOG: ${RUNNER_LOG:-info}
@@ -570,20 +560,11 @@ services:
 
       RUST_LOG: ${EXTERNAL_RUNNER_LOG:-info}
 
-      # **The four poll intervals are not offered here**, and the image's
-      # defaults suit an installation that is one account at the archive.
-      #
-      # **Asking the archive less often does not hold a lease longer.** Leases
-      # are renewed on a timer of their own, a quarter of what the Server
-      # granted, so the two are independent. What the image still refuses at
-      # start is a lease that does not outlast
-      # `AJ_External__PendingTimeoutSeconds`, a lease above the Server's ceiling
-      # of 3600, `AJ_Poll__WaitSeconds` above 300, and `AJ_External__MaxPending`
-      # of zero.
-      #
-      # **What the archive feels is the gap between two submissions**, which is
-      # `AJ_External__SubmitMinIntervalSeconds`. An installation that has to be
-      # gentler with somebody else's service sets that one, in an overlay.
+      # **The four poll intervals are not offered here**; the image's defaults
+      # suit one account at the archive. Leases are renewed on a timer of their
+      # own, a quarter of the granted lease, so polling less often does not hold
+      # one longer. What the archive feels is
+      # `AJ_External__SubmitMinIntervalSeconds`, set in an overlay.
 
     volumes:
       # The identity key. Losing it costs a re-registration and an approval.

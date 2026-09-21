@@ -33,13 +33,10 @@ RETENTION=$(setting GC_TMP_RETENTION_DAYS 7)
 # takes minutes; deleting a directory a Runner is still using would fail an
 # evaluation that was going to succeed.
 
-# **Which arrangement this installation has, asked of the rendered compose file
-# rather than of a variable.** `RUNNER_WORK_DIR` stays in an `.env` after a move
-# to volumes — inert, and named as such in `docs/OPERATIONS.md` — and the
-# directory it named stays on disk. Choosing by whether that directory exists
-# therefore sweeps the one nothing writes to any more and never sweeps the
-# volumes everything writes to, with nothing to show for either.
-# `scripts/preflight.sh` asks the same question in the same way.
+# **Which arrangement this is, asked of the rendered compose file rather than
+# of a variable.** `RUNNER_WORK_DIR` goes inert after a move to volumes and the
+# directory it named stays on disk, so choosing by that would sweep what nothing
+# writes to. `scripts/preflight.sh` asks the same way.
 directories=no
 if compose config 2>/dev/null | grep -q 'AJ_Work__HostPath'; then
     directories=yes

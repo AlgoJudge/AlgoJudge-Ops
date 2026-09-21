@@ -66,10 +66,9 @@ fi
 # `MIGRATE_ON_START=true` the Server brings the restored schema forward on its
 # next start and there is no going back down, so this warns rather than refuses.
 
-# **Both chains, because a release may move either.** `backup.sh` records the
-# application schema and the LTI one separately, and they migrate separately —
-# so comparing only the first says nothing about a release that moved only the
-# other, and says it silently.
+# **Both chains, because they migrate separately.** Comparing only the
+# application schema says nothing, silently, about a release that moved the LTI
+# one — which `backup.sh` has been recording all along.
 
 if [ -f "$meta" ]; then
     for chain in application lti; do

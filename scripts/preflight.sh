@@ -24,10 +24,8 @@ if [ -z "${AJ_ADMIN_TOKEN:-}" ]; then
        the only way to set the administrator's password — so there would be no
        way into this installation at all. Generate one: openssl rand -base64 36"
 elif [ "$AJ_ADMIN_TOKEN" = "admin-token-development-only" ]; then
-    # **Long enough to pass the length check below, which is why it is named
-    # here.** The Server closes `/admin` outside Development when the token is
-    # this one, so it is not a weak way in — it is no way in, and the failure
-    # arrives at the first script that needs `aj-admin`.
+    # Long enough to pass the length check below, which is why it is named
+    # here. The Server closes `/admin` on this value, so it is no way in.
     report "AJ_ADMIN_TOKEN is the well-known development token that this product's
        development compose files carry. The Server closes /admin when it is set
        to that, so there is no way to set the administrator's password and
@@ -129,10 +127,8 @@ if runs_service runner-1 runner; then
         lanes=$(setting RUNNER_TESTS_AT_ONCE 1)
 
         # **An empty cpuset is every processor the host has**, which is what
-        # this file ships, so there the floor is the host's own count rather
-        # than a list somebody wrote. Asked for more lanes than that, a Runner
-        # refuses to start exactly as it does with a cpuset too narrow, and the
-        # per-Runner arithmetic below never sees it.
+        # ships, so there the floor is the host's count and the per-Runner
+        # arithmetic below never sees it.
         host_processors=$(nproc 2>/dev/null || echo 0)
         case ",$(setting COMPOSE_PROFILES ''),"  in
             *,runner,*|*,runner-extra,*)
@@ -147,9 +143,9 @@ if runs_service runner-1 runner; then
 
         for n in 1 2 3 4; do
             eval "set_for_runner=\${RUNNER_${n}_CPUSET:-}"
-            # `runner-1` and `runner-2` start with `runner`; `runner-3` and
-            # `runner-4` only with `runner-extra`. Asking about a Runner that
-            # this installation does not start is a report nobody can act on.
+            # `runner-1` and `runner-2` start with `runner`, the other two
+            # only with `runner-extra`. Reporting on one that does not start is
+            # a report nobody can act on.
             case "$n" in
                 1|2) wanted=runner ;;
                 *)   wanted=runner-extra ;;
@@ -160,11 +156,9 @@ if runs_service runner-1 runner; then
             esac
             [ -n "$set_for_runner" ] || continue
 
-            # **Every processor a cpuset names has to be on this host.** The
-            # daemon refuses to create a container asking for one that is not --
-            # `Requested CPUs are not available` -- so `up -d --wait` stops with
-            # part of the stack running and nothing here having said so.
-            # Skipped where sysfs publishes nothing, as the core check below is.
+            # **Every processor a cpuset names has to be on this host**, or
+            # the daemon refuses the container and `up -d --wait` stops with
+            # half the stack running. Skipped where sysfs publishes nothing.
             if [ -d /sys/devices/system/cpu/cpu0 ]; then
                 absent=$(
                     for piece in $(echo "$set_for_runner" | tr ',' ' '); do
@@ -405,11 +399,9 @@ fi
 networks=${TRUSTED_PROXY_NETWORKS:-}
 proxies=${TRUSTED_PROXY_PROXIES:-}
 
-# **`none` is a value for the proxies and not for the networks.** The Server
-# switches the middleware off when `none` is the whole of what it was told to
-# trust, and that test is on `Forwarded:KnownProxies`; reaching
-# `Forwarded:KnownNetworks`, the same word is read as a CIDR block and refused
-# at startup by name.
+# **`none` is a value for the proxies, not for the networks.** The Server
+# switches the middleware off on `Forwarded:KnownProxies=none`; in
+# `KnownNetworks` the same word is read as a CIDR block and refused at startup.
 if [ "$networks" = none ]; then
     report "TRUSTED_PROXY_NETWORKS is 'none', which is not a network. The Server
        refuses it at startup. To run with nothing in front of this Server, write

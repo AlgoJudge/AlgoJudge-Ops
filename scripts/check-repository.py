@@ -276,15 +276,12 @@ def the_runner_volume_names_are_the_daemons(problems):
 
     **A Runner is handed a name to ask the daemon about, not a Compose key to
     resolve.** Compose creates the key `runner-cache` as
-    `<project>_runner-cache`, and the Runner passes what it was given straight
-    to `docker volume inspect` and exits when there is no such volume — before
-    it registers, so the panel shows no Runner at all. Nothing reports it as a
-    configuration mistake: `restart: unless-stopped` makes it a loop, and
-    `up -d --wait` still returns because a Runner declares no health check.
+    `<project>_runner-cache`; the Runner passes what it was given to
+    `docker volume inspect` and exits when there is no such volume — before it
+    registers, and with `restart: unless-stopped` making it a loop that
+    `up -d --wait` does not notice, because a Runner has no health check.
 
-    The prefix has to be the same expansion Compose resolves the project name
-    into, so that a value and its volume move together when an installation
-    gives itself a project name.
+    The prefix must be the same expansion on both sides so they move together.
     """
     compose = read("compose.yaml")
 

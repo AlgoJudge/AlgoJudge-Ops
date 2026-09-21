@@ -33,10 +33,9 @@ args=("$@")
 LOCK_FILE="$ROOT/state/current.lock"
 
 # **What was running before this update, which is what a rollback wants.**
-# `current.lock` is written once the new images are healthy and is therefore a
-# record of the new ones -- right for the language-image comparison above, and
-# the wrong answer for `rollback.sh`, which exists to go back one. This is
-# written before the swap instead, so the two questions have two files.
+# `current.lock` is written once the new images are healthy, so it names the new
+# ones -- right for the language-image comparison, wrong for `rollback.sh`. Two
+# questions, two files.
 PREVIOUS_LOCK="$ROOT/state/previous.lock"
 
 # **Every service this installation runs that carries an image of ours.**
@@ -350,9 +349,8 @@ log "closing the installation"
 
 # ── 5. The swap ─────────────────────────────────────────────────────────────
 
-# **Recorded before the swap, because afterwards it cannot be.** These are the
-# digests a rollback puts back, and once `compose up -d` has run there is
-# nothing left on the host that says what they were.
+# **Recorded before the swap, because afterwards nothing on the host says what
+# these were.**
 printf '%s\n' "$(digests)" >"$PREVIOUS_LOCK"
 log "the images being replaced are recorded in state/previous.lock"
 
@@ -363,18 +361,15 @@ compose up -d --remove-orphans
 
 if wait_healthy 120; then healthy=yes; else healthy=no; fi
 
-# **The schema is read on both paths, and the failing one is why.** With
-# `MIGRATE_ON_START` the new Server brings the schema forward as it starts,
-# which happens before it is healthy — so an update that migrates and then
-# fails its health check has moved the schema and is about to put the old
-# images back against it. `rollback.sh` warns from this file and from nothing
-# else, so writing it only where the update succeeded left the one case that
-# needed the warning without one.
+# **Read on both paths, and the failing one is why.** With `MIGRATE_ON_START`
+# the Server migrates as it starts, before it is healthy — so a failed update
+# has moved the schema and is about to put the old images back against it.
+# `rollback.sh` warns from this file and from nothing else.
 
 schema_after=$(psql_scalar "SELECT string_agg(\"MigrationId\", ',' ORDER BY \"MigrationId\") FROM \"__EFMigrationsHistory\"" | tr -d '[:space:]' || true)
 if [ -z "$schema_after" ]; then
-    # Not "nothing moved": the database did not answer. Saying nothing moved
-    # here would delete the record of a migration that did.
+    # Not "nothing moved": the database did not answer, and saying so would
+    # delete the record of a migration that did.
     warn "the schema could not be read after the swap, so whether it moved is not
        recorded. Treat state/last-migration as older than this update. The dump
        taken before the swap is $(basename "$pre_update_dump")."

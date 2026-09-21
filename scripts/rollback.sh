@@ -10,9 +10,8 @@
 # points at today — which is the whole reason the lock file exists. A moving tag
 # that has since moved again would otherwise roll forward.
 #
-# **Not `state/current.lock`, which is the other set.** That one is written once
-# the new images are healthy and names what is running now; restoring it would
-# report a rollback and change nothing.
+# **Not `state/current.lock`**, which names what is running now: restoring that
+# would report a rollback and change nothing.
 #
 # **A rollback is not a time machine, and this script says so.** If the update
 # applied a migration, putting the old image back leaves a database whose schema
