@@ -74,36 +74,61 @@ its keys.
 has to be said out loud on release day rather than discovered by somebody whose
 score moved. Nothing here stops the release.
 
-- **Installations follow releases, not `main`.** From this tag on,
-  `update.sh` moves the checkout only to the newest `vX.Y.Z`. An installation
-  made from `v0.1.0` has that tag's `update.sh`, which runs `git pull`, warns on
-  the release checkout and stays; move it once by hand — `git fetch --tags` and
-  `git checkout <this tag>` — and it follows releases from then on. An
-  installation that cloned `main` took the new `update.sh` on its first update
-  after the change and has stayed on that commit since; it moves to this tag on
-  its next update, because the tag contains it — which holds only for a tag cut
-  from `main`.
+### Before they update
 
-- **A submission has to end by itself to be accepted**, since AlgoJudge-Runner
-  #62 on 2026-09-16. A checker or an interactor finishing no longer stops the
-  program: one that prints its answer and keeps writing meets the output limit,
-  one that then waits for input that will never come meets a time limit, and
-  neither is accepted however satisfied the judge was. A judge that **refused**
-  still outranks what stopped the run, so its comment survives.
+- **`.env` belongs to the installation and no checkout touches it.** An
+  installation from the 0.1 line still has `SERVER_TAG=0` and the other three,
+  which is the moving major this release stopped using. Left alone, that
+  installation keeps crossing minors unasked. Tell them to write `0.2`.
 
-  **It is a verdict change and it moves scores.** The behavior it replaces was
-  not one answer: the judge's exit and the output cap are decided in the same
-  loop, so the same submission was `Accepted` on an idle host and `Output limit
-  exceeded` on a busy one — measured at 24% of runs under load, 0% idle. Code
-  that was accepted before a contest may be refused after it, and that is the
-  point rather than a regression, but a participant who re-submits identical
-  code will see it.
+- **0.2 is not compatible with 0.1.** The Server and the Client move together:
+  a 0.1 Client against a 0.2 Server meets renamed routes, and roles replaced
+  permission templates. Pinning one component and not the others is the way to
+  a stack that comes up healthy and refuses work.
 
-  **Who has to do something**: a package whose problems legitimately keep
-  writing after the judge has seen enough — it wants a judge that reads to the
-  end. Most packages do not, and need nothing. `AlgoJudge-Docs` says all of this
-  on `/runner/problem-types`, `/client/manager/packages` and
-  `/client/participant/results`, in both locales where there are two.
+- **The update carries a destructive migration.** `20260920180000_version_0_2_0`
+  is 162 operations, of which 19 drop a column, 10 rename one, 4 drop a table
+  and 2 rename one. `update.sh` takes a dump first and `rollback.sh` refuses to
+  pretend a rollback undoes it; an operator who has turned `MIGRATE_ON_START`
+  off applies it themselves.
+
+- **A host that runs Runners needs Docker Engine 26**, or Podman 5. The host
+  directories this stack offered below that floor are gone, so there is no
+  arrangement that avoids it. `preflight.sh` refuses before anything starts.
+
+### What they meet afterwards
+
+- **A submission has to end by itself to be accepted.** A checker or an
+  interactor finishing no longer stops the program: one that prints its answer
+  and keeps writing meets the output limit, one that waits for input that will
+  never come meets a time limit, and neither is accepted however satisfied the
+  judge was. A judge that **refused** still outranks what stopped the run, so
+  its comment survives.
+
+  **It is a verdict change and it moves scores.** What it replaces was not one
+  answer: the judge's exit and the output cap were decided in the same loop, so
+  the same submission was `Accepted` on an idle host and `Output limit exceeded`
+  on a busy one. Code accepted before a contest may be refused after it, and a
+  participant who re-submits identical code will see it. A package whose
+  problems legitimately keep writing after the judge has seen enough wants a
+  judge that reads to the end; most need nothing. `AlgoJudge-Docs` covers it on
+  `/runner/problem-types`, `/client/manager/packages` and
+  `/client/participant/results`.
+
+- **The cpusets ship empty**, which is every processor the host has. An
+  installation that never set them was asking for processors 0 to 7 and failed
+  to create a Runner on any smaller machine.
+
+- **A rollback goes back one update and reads `state/previous.lock`.** It is
+  written immediately before a swap, so an installation that has not updated
+  since moving here has nothing to roll back to, and says so rather than
+  reporting a rollback that changed nothing.
+
+- **Installations follow releases, not `main`.** `update.sh` moves the checkout
+  only to the newest `vX.Y.Z`. An installation made from `v0.1.0` has that
+  tag's `update.sh`, which runs `git pull`, warns on a release checkout and
+  stays: move it once by hand, and it follows releases from then on.
+  `docs/OPERATIONS.md` has the sequence under *Coming from the 0.1 line*.
 
 ## Eight images, four repositories, and this one last
 
@@ -125,11 +150,20 @@ reading those files, not by a registry.
 nothing in it: everything here resolves to `0.2`, which does not exist until
 steps 1 to 3 have run.
 
-**All eight packages are public**, read without credentials on 2026-09-08 at `0`
-and `0.1.0`. A package created by its first push is private, so this is a step
+**All eight packages are public**, read without credentials at `0.2` on
+2026-09-21. A package created by its first push is private, so this is a step
 that returns with every new image — including `algojudge-external-runner`, which
 is built from a private repository and was published anyway, so that profile
-needs no `docker login` either.
+needs no `docker login` either. Reading them needs no token of ours:
+
+```bash
+image=algojudge-server
+token=$(curl -s "https://ghcr.io/token?scope=repository:algojudge/$image:pull&service=ghcr.io" |
+    python3 -c "import json,sys; print(json.load(sys.stdin)['token'])")
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $token" \
+    -H 'Accept: application/vnd.oci.image.index.v1+json' \
+    "https://ghcr.io/v2/algojudge/$image/manifests/0.2"
+```
 
 ## Before the tag
 
@@ -220,7 +254,7 @@ Ten, and only two of them are somebody else's.
 | Image | Where | Whose schedule |
 |---|---|---|
 | `postgres:${POSTGRES_TAG:-18}` | `compose.yaml`, `.env.example` | upstream |
-| `nginx:${NGINX_TAG:-1.30-alpine}` | `compose.yaml`, `.env.example`, `check.yml`, `docs/TROUBLESHOOTING.md` | upstream |
+| `nginx:${NGINX_TAG:-1.30-alpine}` | `compose.yaml`, `.env.example`, `check.yml`, `docs/TROUBLESHOOTING.md`, `scripts/gc.sh` | upstream |
 | `algojudge-server`, `algojudge-client` | `compose.yaml` at `${SERVER_TAG:-0.2}` / `${CLIENT_TAG:-0.2}` | ours |
 | `algojudge-runner` and `lang-gcc`, `lang-clang`, `lang-python`, `lang-pypy` | `compose.yaml` at `${RUNNER_TAG:-0.2}` | ours |
 | `algojudge-external-runner` | `compose.yaml` at `${EXTERNAL_RUNNER_TAG:-0.2}` | ours |
@@ -238,133 +272,16 @@ for i in postgres:18 nginx:1.30-alpine; do
 done
 ```
 
-Read on **2026-09-08**: `postgres:18` built 2026-08-26 and is the newest major —
-there is no 19. `nginx:1.30-alpine` built 2026-09-03; nginx numbers even minors
-stable and odd ones mainline, so 1.30 is stable and 1.31 is mainline.
+nginx numbers even minors stable and odd ones mainline, so 1.30 is stable and
+1.31 is mainline. `postgres:18` is the newest major.
 
-**This is not a hypothetical.** `NGINX_TAG` was `1.27-alpine` until 2026-09-08:
-that branch reached end of life on 2025-06-24 and the tag was last built
-2025-04-16, while pulling cleanly the whole time. Nothing in CI or in
-`check-repository.py` noticed, and nothing will — the check is this paragraph and
+**A tag that still resolves is not a tag anybody still maintains**, and nothing
+in CI or in `check-repository.py` notices — the check is this paragraph and
 somebody doing it.
 
-Raising `NGINX_TAG` is a decision about **three** places, not one:
+Raising `NGINX_TAG` is a decision about **three** repositories, not one:
 `AlgoJudge-Client` builds its image `FROM nginx:…` and `AlgoJudge-Docs` serves
 its own site from another. Know which of the three you are moving.
-
-## What was checked on 2026-09-07, and against what
-
-`release/0.1.0` at `f5deca9`, two commits ahead of `main` and none behind. Local
-tools: Docker 29.6.2, Compose v5.3.1, Python 3.14.6, GNU bash 4.4.
-
-- **`check-repository.py`**: nine checks, nothing to report.
-- **`bash -n`**: ten scripts parse.
-- **The seven arrangements** each resolve to the services they should, including
-  `client,server,data`.
-- **`preflight.sh`** on a deliberately wrong `.env`: five problems, exit 1,
-  nothing started. On a good one with `external-runner` on and no credentials:
-  one problem, exit 1.
-- **nginx started** with the shipped configuration and served `/healthz` 200 on
-  both ports, answered `/api/v1/admin` with 404, and accepted the health check
-  `compose.yaml` gives it — on `nginx:1.27-alpine` (1.27.5) and again on
-  `nginx:1.30-alpine` (1.30.4), which starts clean on the same files.
-- **`.env.example`**: 63 variables, every one read by `compose.yaml` or a script,
-  and every `setting NAME` and `${NAME}` in `scripts/` described there.
-- **No `.env`** in the working tree or in `git ls-files`; `.gitignore` covers
-  both spellings.
-- **`POSTGRES_TAG=18` is current.** 18 is the newest major and 18.6 the newest
-  patch, and the `18` tag resolves to it.
-- **`NGINX_TAG=1.27-alpine` is not.** The 1.27 mainline branch reached end of
-  life on 2025-06-24; the tag still pulls, frozen at 1.27.5 from 2025-04-16.
-  Stable is 1.30 (1.30.4), mainline 1.31 (1.31.5). It is written in four places
-  here — `compose.yaml`, `.env.example`, `docs/TROUBLESHOOTING.md` and
-  `.github/workflows/check.yml` — and `AlgoJudge-Client`'s published image is
-  `FROM nginx:1.27-alpine`, so raising one is a decision about both.
-- **The Compose floor is higher than `INSTALL.md` says.** `compose.yaml` uses
-  `cgroup: host`, which `docker/compose` first shipped in **v2.15.0**, and
-  `up -d --wait` needs v2.1.1. *What the host needs* says *Compose v2 or later*.
-- **The host command set is larger than `INSTALL.md` lists.** Beyond `bash`,
-  `openssl`, `find`, `du` and `df`, the scripts use `awk`, `sed`, `stat`,
-  `sha256sum`, `mktemp`, `date`, `cut`, `tr`, `grep`, `sort`, `head`, `tail` and
-  `wc`, with `git`, `flock` and `crontab` optional and each degrading with a
-  message. `sed -i` and `stat -c` are the GNU spellings.
-- **`python3` is a maintainer's tool, not an installation's**: `check-repository.py`
-  is CI and `make check`. Green on 3.12 in CI and on 3.14.6 here.
-- **Names, paths and commands cross-checked mechanically**: every `scripts/*`
-  reference in the documentation resolves to a file that exists, every `aj-admin`
-  subcommand named here exists in the Server's script, and the crontab and
-  `OPERATIONS.md` agree on the schedule. The prose itself was not proofread line
-  by line.
-
-## The stand-up of 2026-09-08, from the published images
-
-The step this file used to call impossible. WSL Ubuntu 26.04, Docker 29.7.2,
-Compose v5.4.0, cgroup v2 under the `systemd` driver, `release/0.1.0` cloned
-fresh and given its own project name.
-
-| | |
-|---|---|
-| `docker compose pull` | six services resolved at `0`; `algojudge-client:0` came back as `sha256:6f124296…`, the digest that release published |
-| `preflight.sh` | `ready: edge,app,data,runner`, after it asked for a certificate and the host's real `DOCKER_GID` |
-| `up -d --wait` | eight containers healthy in **16 s** |
-| The schema | one migration per context on an empty database — `20260907183332_version_0_1_0`, and the LTI module's own |
-| The Runners | four registered `pendingApproval`, approved through `POST /runners/{id}/approve` |
-| A submission | `fixtures/sum.zip` as the problem, a correct C++ solution → **Accepted, 100**, and one wrong by one → **Wrong answer, 0**. Under four seconds each |
-| `update.sh` | run against the real registry for the first time: pulled everything, said *nothing new*, closed nothing |
-
-**What it found.** The stack attached another installation's volumes, because
-`name: algojudge` is in `compose.yaml` and the host had them from an earlier
-rehearsal — PostgreSQL then refused a password that was only ever read when its
-volume was created. That is documented in `INSTALL.md` under *The project name is
-`algojudge`*, symptom and all, and the fix was the project name that section
-gives.
-
-The other was not documented and is now: **`compose pull` never fetched the four
-language images**, and the Runner of that day pulled one only when the host had
-none, so a toolchain image from a week earlier survived an update and failed
-every job on a missing `aj-shim`. `update.sh` pulls them, `pull.sh` does the
-same on first install, and `TROUBLESHOOTING.md` carries the symptom.
-
-*Both halves of that sentence have since changed in the Runner, on 2026-09-16:
-it fetches all four at start unconditionally and refuses to register if it
-cannot, and what it remembers about an image is filed under the image's id
-rather than its name. The account above is what was found on 2026-09-08 and is
-kept as the finding it was.*
-
-**`update.sh` and `rollback.sh` were then driven for real**, by moving a tag the
-way a release moves one. The update swapped the container, recorded
-`state/current.lock`, and the rollback put the recorded digests back and came up
-healthy; a submission judged `Accepted` afterwards, with the language images
-pinned by digest.
-
-That drill found two more, both fixed here:
-
-- **`update.sh` compared a service called `runner`, which does not exist.** The
-  services are `runner-1` ... `runner-N`, so every Runner went uncompared and
-  unrecorded: a release that moved only the Runner read as *nothing new*, and a
-  rollback had no Runner image to go back to. `state/current.lock` had six
-  services in it and none of them a Runner.
-- **The four language images were in neither file.** They are recorded as
-  `lang:` lines now, and a rollback pins them back through
-  `AJ_Sandbox__Image__*` on each Runner.
-
-**Still not checked**: a `STORAGE_KIND` of `filesystem` or `s3` started at all,
-and an installation reached from a browser over its own TLS rather than through
-the API.
-
-**A third, found the same day and fixed with them**: `update.sh` asked whether
-the tag a container was created *from* had moved, not whether the installation
-now asks for a **different** tag. An operator who edits `SERVER_TAG` — the
-documented way to pin a version — was told *nothing new. Not closing anything.*
-while the image Compose had just pulled sat unused. It now asks Compose what it
-would run.
-
-That fix needed two attempts, and the first is worth keeping: `compose config
---images <service>` returns the service's image **and its dependencies'**, and
-the order differs by version — v5.3.1 prints the service first, v5.4.0 prints
-`postgres:18` first. Taking the first line reported an update on every run, on
-one of the two. The line is chosen by the repository the image is named after
-now, and nothing depends on order.
 
 ## After the tag
 
@@ -381,6 +298,7 @@ go.
 The documentation site cuts its `/install/` snapshot on release day, from
 `AlgoJudge-Docs`. **A minor gets one or it never does**: the script takes a
 minor, refuses a patch version, and refuses to re-cut a directory that exists.
+
 ### The public website states this component's version
 
 `algojudge.pl` prints **`Ops v<version>`** in four places — a card badge and a
