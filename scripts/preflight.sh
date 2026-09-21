@@ -116,13 +116,68 @@ if runs_service runner-1 runner; then
         # value an operator has to change is in this file, and because two
         # Runners can disagree about it while sharing one setting.
         lanes=$(setting RUNNER_TESTS_AT_ONCE 1)
+
+        # **An empty cpuset is every processor the host has**, which is what
+        # this file ships, so there the floor is the host's own count rather
+        # than a list somebody wrote. Asked for more lanes than that, a Runner
+        # refuses to start exactly as it does with a cpuset too narrow, and the
+        # per-Runner arithmetic below never sees it.
+        host_processors=$(nproc 2>/dev/null || echo 0)
+        case ",$(setting COMPOSE_PROFILES ''),"  in
+            *,runner,*|*,runner-extra,*)
+                if [ "$host_processors" -gt 0 ] && [ "$lanes" -gt "$host_processors" ]; then
+                    report "RUNNER_TESTS_AT_ONCE is $lanes and this host has
+       $host_processors processor(s). A Runner refuses to start when it cannot
+       give every lane a processor of its own, and \`restart: unless-stopped\`
+       turns that into a loop. Lower RUNNER_TESTS_AT_ONCE."
+                fi
+                ;;
+        esac
+
         for n in 1 2 3 4; do
             eval "set_for_runner=\${RUNNER_${n}_CPUSET:-}"
-            [ -n "$set_for_runner" ] || continue
+            # `runner-1` and `runner-2` start with `runner`; `runner-3` and
+            # `runner-4` only with `runner-extra`. Asking about a Runner that
+            # this installation does not start is a report nobody can act on.
+            case "$n" in
+                1|2) wanted=runner ;;
+                *)   wanted=runner-extra ;;
+            esac
             case ",$(setting COMPOSE_PROFILES ''),"  in
-                *,runner,*|*,runner-extra,*) ;;
+                *,"$wanted",*) ;;
                 *) continue ;;
             esac
+            [ -n "$set_for_runner" ] || continue
+
+            # **Every processor a cpuset names has to be on this host.** The
+            # daemon refuses to create a container asking for one that is not --
+            # `Requested CPUs are not available` -- so `up -d --wait` stops with
+            # part of the stack running and nothing here having said so.
+            # Skipped where sysfs publishes nothing, as the core check below is.
+            if [ -d /sys/devices/system/cpu/cpu0 ]; then
+                absent=$(
+                    for piece in $(echo "$set_for_runner" | tr ',' ' '); do
+                        case "$piece" in
+                            *-*) first=${piece%%-*}; last=${piece##*-}
+                                 c=$first
+                                 while [ "$c" -le "$last" ]; do
+                                     echo "$c"; c=$((c + 1))
+                                 done ;;
+                            *)   echo "$piece" ;;
+                        esac
+                    done | while read -r cpu; do
+                        [ -d "/sys/devices/system/cpu/cpu$cpu" ] || printf '%s ' "$cpu"
+                    done
+                )
+                if [ -n "${absent:-}" ]; then
+                    report "RUNNER_${n}_CPUSET names processor(s) this host does not have:
+       ${absent}. The daemon refuses to create that container -- \`Requested
+       CPUs are not available\` -- so \`docker compose up -d --wait\` stops with
+       part of the stack running. Leave the cpuset empty to take every
+       processor, or name only what \`lscpu -p=CPU,CORE\` lists."
+                fi
+            fi
+
             # `0-3,8` names five processors; count them the way the kernel
             # spells them rather than counting commas.
             processors=$(
