@@ -23,6 +23,17 @@ if [ -z "${AJ_ADMIN_TOKEN:-}" ]; then
     report "AJ_ADMIN_TOKEN is empty. /admin is closed while it is, and that includes
        the only way to set the administrator's password — so there would be no
        way into this installation at all. Generate one: openssl rand -base64 36"
+elif [ "$AJ_ADMIN_TOKEN" = "admin-token-development-only" ]; then
+    # **Long enough to pass the length check below, which is why it is named
+    # here.** The Server closes `/admin` outside Development when the token is
+    # this one, so it is not a weak way in — it is no way in, and the failure
+    # arrives at the first script that needs `aj-admin`.
+    report "AJ_ADMIN_TOKEN is the well-known development token that this product's
+       development compose files carry. The Server closes /admin when it is set
+       to that, so there is no way to set the administrator's password and
+       scripts/maintenance.sh cannot open or close the installation — which
+       stops backup.sh --quiesce, update.sh and restore.sh at that step.
+       Generate one: openssl rand -base64 36"
 elif [ "${#AJ_ADMIN_TOKEN}" -lt 24 ]; then
     report "AJ_ADMIN_TOKEN is ${#AJ_ADMIN_TOKEN} characters. It is a long-lived
        secret on a surface with no rate limit; use at least 24."
@@ -301,7 +312,7 @@ if runs_service runner-1 runner; then
         # is exactly what these two probes check a hand-made directory for.
         if [ "$directories" = yes ] && [ -n "${RUNNER_WORK_DIR:-}" ] \
            && [ "${RUNNER_WORK_DIR#/}" != "$RUNNER_WORK_DIR" ]; then
-            probe_image="nginx:$(setting NGINX_TAG 1.27-alpine)"
+            probe_image="nginx:$(setting NGINX_TAG 1.30-alpine)"
             if ! MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'echo probe > /work/.algojudge-probe' >/dev/null 2>&1; then
                 report "the Runner cannot write into RUNNER_WORK_DIR. It runs as root, so this
        is a read-only filesystem or a path the daemon cannot open:

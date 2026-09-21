@@ -33,8 +33,20 @@ RETENTION=$(setting GC_TMP_RETENTION_DAYS 7)
 # takes minutes; deleting a directory a Runner is still using would fail an
 # evaluation that was going to succeed.
 
+# **Which arrangement this installation has, asked of the rendered compose file
+# rather than of a variable.** `RUNNER_WORK_DIR` stays in an `.env` after a move
+# to volumes — inert, and named as such in `docs/OPERATIONS.md` — and the
+# directory it named stays on disk. Choosing by whether that directory exists
+# therefore sweeps the one nothing writes to any more and never sweeps the
+# volumes everything writes to, with nothing to show for either.
+# `scripts/preflight.sh` asks the same question in the same way.
+directories=no
+if compose config 2>/dev/null | grep -q 'AJ_Work__HostPath'; then
+    directories=yes
+fi
+
 work=${RUNNER_WORK_DIR:-}
-if [ -n "$work" ] && [ -d "$work" ]; then
+if [ "$directories" = yes ] && [ -n "$work" ] && [ -d "$work" ]; then
     # **The directories overlay**, where the scratch is one host directory with
     # a directory per Runner under it and this shell can reach all of it.
     removed=$(find "$work" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION" -print 2>/dev/null | wc -l)
@@ -52,7 +64,7 @@ else
     # set; asking the container that has it mounted needs no guess and skips a
     # Runner this host does not run. It also cannot bring one into existence by
     # naming it, which `docker run -v` would.
-    sweeper="nginx:$(setting NGINX_TAG 1.27-alpine)"   # as `preflight.sh` probes with
+    sweeper="nginx:$(setting NGINX_TAG 1.30-alpine)"   # as `preflight.sh` probes with
     for n in 1 2 3 4; do
         container=$(compose ps -q "runner-$n" 2>/dev/null) || continue
         [ -n "$container" ] || continue
