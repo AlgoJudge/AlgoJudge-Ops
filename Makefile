@@ -19,7 +19,7 @@ help:
 	@echo 'backup           one dump, verified, then rotation'
 	@echo 'restore DUMP=…   put a dump back (destroys the current database)'
 	@echo 'update           pull, back up, swap, roll back if it does not come up'
-	@echo 'rollback         return to the images in state/current.lock'
+	@echo 'rollback         return to the images in state/previous.lock'
 	@echo 'gc               reclaim what this installation left behind'
 	@echo 'check            repository checks'
 

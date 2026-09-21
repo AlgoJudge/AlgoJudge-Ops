@@ -306,10 +306,13 @@ over `SERVER_URL`. Those hosts have their own `update.sh`, and a host that is no
 updated in step goes quiet on its **next restart** rather than immediately —
 which is the shape of failure nobody notices until a contest.
 
-**Versions are tags in `.env` and digests in `state/current.lock`.** The tag says
-what was asked for; the digest says what is running, and is what a rollback
-restores. Digests cannot live in this repository — it is a product many
-organizations deploy independently, and none of them can commit to it.
+**Versions are tags in `.env` and digests in two lock files.** The tag says what
+was asked for; the digests say what images those resolved to.
+`state/current.lock` is written once an update is healthy and names what is
+running. `state/previous.lock` is written immediately before the swap and names
+what was replaced, which is what a rollback restores. Digests cannot live in
+this repository — it is a product many organizations deploy independently, and
+none of them can commit to it.
 
 ### Updating past 2026-09-16, when the Runners moved into volumes
 
@@ -354,10 +357,14 @@ docker volume rm algojudge_runner-cache
 ./scripts/rollback.sh
 ```
 
-Restores exactly the images in `state/current.lock`, whatever the tags point at
-now, through an override at `state/rollback.compose.yaml`. **Bring the stack up
-with both files** until the cause is fixed, or a plain `up` puts the new images
-back.
+Restores exactly the images in `state/previous.lock` — the ones the last update
+replaced — whatever the tags point at now, through an override at
+`state/rollback.compose.yaml`. **Bring the stack up with both files** until the
+cause is fixed, or a plain `up` puts the new images back.
+
+**It goes back one update and no further.** An installation that has updated
+twice since the version it wants cannot reach it this way; the images are still
+in the registry, so the route there is a tag in `.env`.
 
 **A rollback does not undo a migration.** If the update moved the schema,
 `state/last-migration` records it and `rollback.sh` refuses to be quiet about it:
