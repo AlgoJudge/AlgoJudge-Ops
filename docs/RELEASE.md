@@ -17,26 +17,28 @@ defaults in `compose.yaml`:
 
 | | |
 |---|---|
-| `SERVER_TAG`, `CLIENT_TAG` | `0` |
-| `RUNNER_TAG` | `0`, and it names the four `lang-*` images too |
-| `EXTERNAL_RUNNER_TAG` | `0`, released on its own schedule |
+| `SERVER_TAG`, `CLIENT_TAG` | `0.2` |
+| `RUNNER_TAG` | `0.2`, and it names the four `lang-*` images too |
+| `EXTERNAL_RUNNER_TAG` | `0.2`, released on its own schedule |
 
 `POSTGRES_TAG` and `NGINX_TAG` are upstream images and move on their own
 reasoning, not on ours.
 
-**Why `0` and not `1`.** All four release workflows compute their tags the same
-way — `$version ${version%.*} ${version%%.*} latest` — so `v0.1.0` publishes
-`0.1.0`, `0.1`, `0` and `latest`, and the moving major of the 0.1 line is `0`.
-Asking for `1` would name a tag no release creates, and `docker compose pull`
-would find nothing. Below 1.0 a minor may change what the one before it did, so
-`0` follows those too: an installation that wants only fixes writes `0.1`, and
-one that wants to decide every version writes `0.1.0`.
+**The minor, not the moving major.** All four release workflows compute their
+tags the same way — `$version ${version%.*} ${version%%.*} latest` — so `v0.2.1`
+publishes `0.2.1`, `0.2`, `0` and `latest`. `0.2` takes patches and stops there.
 
-**A prerelease publishes its own tag alone.** `v0.1.0-rc.1` moves nothing, so a
-stack pointed at `0` never sees it; testing one means writing the full version
+**`0` is what this stack must not use.** Below 1.0 a minor may change what the
+one before it did, and 0.2 is not compatible with 0.1 — so the moving major
+carries an installation across a break with nothing asked and nothing said.
+**This repository is the 0.2 line.** A stack for the next minor is the next
+AlgoJudge-Ops release, which is where the upgrade that minor needs belongs.
+
+**A prerelease publishes its own tag alone.** `v0.2.1-rc.1` moves nothing, so a
+stack pointed at `0.2` never sees it; testing one means writing the full version
 into `.env`.
 
-## What `main` already needs that `0` does not yet carry
+## What `main` already needs that `0.2` does not yet carry
 
 **This is not a general warning; it is a list, and it has to be emptied before
 the next tag.** `main` here runs ahead of the published images on purpose, so
@@ -53,13 +55,13 @@ the published image and not against a commit, because the tag is what an
 installation pulls:
 
 ```bash
-docker pull -q ghcr.io/algojudge/algojudge-runner:0
-docker image inspect ghcr.io/algojudge/algojudge-runner:0 \
+docker pull -q ghcr.io/algojudge/algojudge-runner:0.2
+docker image inspect ghcr.io/algojudge/algojudge-runner:0.2 \
     --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
 ```
 
-Every image here carries both labels, so that answers which release the moving
-tag is and which commit built it — and the key can then be looked for in that
+Every image here carries both labels, so that answers which release the tag is
+and which commit built it — and the key can then be looked for in that
 repository at that revision.
 
 **The Runner reads no arguments at all**, so asking it anything through
@@ -120,8 +122,8 @@ should still match when it is tagged. That is a source dependency, settled by
 reading those files, not by a registry.
 
 **Step 4 is the hard one.** This stack cannot be tested against a registry with
-nothing in it: everything here resolves to the moving major `0`, which does not
-exist until steps 1 to 3 have run.
+nothing in it: everything here resolves to `0.2`, which does not exist until
+steps 1 to 3 have run.
 
 **All eight packages are public**, read without credentials on 2026-09-08 at `0`
 and `0.1.0`. A package created by its first push is private, so this is a step
@@ -141,7 +143,7 @@ needs no `docker login` either.
       job fails on the missing shim.
 - [ ] **CI has run on the commit being tagged.** `.github/workflows/check.yml`
       triggers on `push` to `main` and on `pull_request` only, so **nothing runs
-      on `release/0.1.0`**. Merge it, or open the pull request, and read that
+      on a `release/*` branch**. Merge it, or open the pull request, and read that
       run — this repository has no release workflow to refuse a tag that never
       had one.
 - [ ] `python3 scripts/check-repository.py` — the same run CI does. **Read the
@@ -221,13 +223,12 @@ Ten, and only two of them are somebody else's.
 |---|---|---|
 | `postgres:${POSTGRES_TAG:-18}` | `compose.yaml`, `.env.example` | upstream |
 | `nginx:${NGINX_TAG:-1.30-alpine}` | `compose.yaml`, `.env.example`, `check.yml`, `docs/TROUBLESHOOTING.md` | upstream |
-| `algojudge-server`, `algojudge-client` | `compose.yaml` at `${SERVER_TAG:-0}` / `${CLIENT_TAG:-0}` | ours |
-| `algojudge-runner` and `lang-gcc`, `lang-clang`, `lang-python`, `lang-pypy` | `compose.yaml` at `${RUNNER_TAG:-0}` | ours |
-| `algojudge-external-runner` | `compose.yaml` at `${EXTERNAL_RUNNER_TAG:-0}` | ours |
+| `algojudge-server`, `algojudge-client` | `compose.yaml` at `${SERVER_TAG:-0.2}` / `${CLIENT_TAG:-0.2}` | ours |
+| `algojudge-runner` and `lang-gcc`, `lang-clang`, `lang-python`, `lang-pypy` | `compose.yaml` at `${RUNNER_TAG:-0.2}` | ours |
+| `algojudge-external-runner` | `compose.yaml` at `${EXTERNAL_RUNNER_TAG:-0.2}` | ours |
 
-**Ours are settled by the release order above**: the moving major `0` names
-whatever those repositories published last, and the check is that all eight
-resolve.
+**Ours are settled by the release order above**: `0.2` names the newest patch
+of that line in each repository, and the check is that all eight resolve.
 
 **The two upstream ones are the ones that rot quietly**, because a tag goes on
 resolving long after anybody stops building it. Read the date, not the pull:
