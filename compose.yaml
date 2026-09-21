@@ -318,17 +318,28 @@ services:
       # is emptied by whoever claims the job — so two Runners sharing this would
       # delete each other's work in progress. Named here rather than as a path
       # for the same reason as the cache above: one spelling instead of two.
-      AJ_Work__Volume: runner-1-work
+      #
+      # **The project name is part of the name the daemon knows.** Compose
+      # creates the key `runner-1-work` below as `<project>_runner-1-work`, and
+      # what is handed to a Runner is a name to ask the daemon about rather than
+      # a key to resolve -- so the prefix belongs here too. Compose resolves
+      # `COMPOSE_PROJECT_NAME` before it interpolates, from the `name:` at the
+      # top of this file, from the environment or from `-p`, so this expression
+      # is the same string the volume gets in all three.
+      AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-1-work
 
       # **The cache, by the name the daemon knows it by.** A package is unpacked
       # and the checker it declares is built once, in the cache, and both are
       # mounted read-only into the container that judges with them — so the
       # daemon has to be able to reach it. Named, it is reached by name and the
       # package travels as `subpath`, which is why there is no second spelling
-      # of this directory to keep in step with the mount below. The Runner still
-      # checks at start, against a throwaway container, and refuses to judge if
-      # it cannot see what it wrote.
-      AJ_Cache__Volume: runner-cache
+      # of this directory to keep in step with the mount below. The Runner asks
+      # the daemon at start whether it can open this, against a container it
+      # creates and never starts, and refuses to start when it cannot.
+      #
+      # **The project name is part of it**, as for the scratch above, so a
+      # second installation on one host reaches its own and not the first's.
+      AJ_Cache__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-cache
 
       RUST_LOG: ${RUNNER_LOG:-info}
 
@@ -467,7 +478,7 @@ services:
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-2
-      AJ_Work__Volume: runner-2-work
+      AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-2-work
     volumes:
       - runner-2-identity:/var/lib/algojudge-runner
       - runner-cache:/var/cache/algojudge-runner
@@ -482,7 +493,7 @@ services:
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-3
-      AJ_Work__Volume: runner-3-work
+      AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-3-work
     volumes:
       - runner-3-identity:/var/lib/algojudge-runner
       - runner-cache:/var/cache/algojudge-runner
@@ -497,7 +508,7 @@ services:
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-4
-      AJ_Work__Volume: runner-4-work
+      AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-4-work
     volumes:
       - runner-4-identity:/var/lib/algojudge-runner
       - runner-cache:/var/cache/algojudge-runner

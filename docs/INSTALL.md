@@ -171,6 +171,10 @@ docker compose -p algojudge-staging up -d --wait
 and pass `-p` to every later command, including the scripts. Better still, put
 `COMPOSE_PROJECT_NAME=` in the `.env` beside it, so nobody has to remember.
 
+The Runners' cache and scratch volumes carry the project name, and so do the
+two values each Runner is given for them, so a second installation reaches its
+own and not the first one's.
+
 ## 1. Clone and configure
 
 ```bash

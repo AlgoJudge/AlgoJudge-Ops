@@ -271,6 +271,68 @@ def the_language_images_have_one_spelling(problems):
             )
 
 
+def the_runner_volume_names_are_the_daemons(problems):
+    """Every `AJ_*__Volume` names a volume the way the daemon holds it.
+
+    **A Runner is handed a name to ask the daemon about, not a Compose key to
+    resolve.** Compose creates the key `runner-cache` as
+    `<project>_runner-cache`, and the Runner passes what it was given straight
+    to `docker volume inspect` and exits when there is no such volume — before
+    it registers, so the panel shows no Runner at all. Nothing reports it as a
+    configuration mistake: `restart: unless-stopped` makes it a loop, and
+    `up -d --wait` still returns because a Runner declares no health check.
+
+    The prefix has to be the same expansion Compose resolves the project name
+    into, so that a value and its volume move together when an installation
+    gives itself a project name.
+    """
+    compose = read("compose.yaml")
+
+    project = re.search(r"^name:[ \t]*(\S+)[ \t]*$", compose, re.MULTILINE)
+    if not project:
+        problems.append(
+            "compose.yaml has no top-level `name:`, so the volume names the "
+            "Runners are given cannot be checked against the project name."
+        )
+        return
+
+    parts = compose.split("\nvolumes:\n", 1)
+    if len(parts) != 2:
+        problems.append(
+            "compose.yaml has no top-level `volumes:` block, so the volume names "
+            "the Runners are given cannot be checked against what is declared."
+        )
+        return
+    declared = set(re.findall(r"^  ([a-z0-9][a-z0-9-]*):", parts[1], re.MULTILINE))
+
+    wanted = r"^\$\{COMPOSE_PROJECT_NAME:-%s\}_(.+)$" % re.escape(project.group(1))
+    found = re.findall(
+        r"^[ \t]+(AJ_(?:Cache|Work)__Volume):[ \t]*(\S+)[ \t]*$", compose, re.MULTILINE
+    )
+    if not found:
+        problems.append(
+            "compose.yaml sets no AJ_Cache__Volume or AJ_Work__Volume. Either the "
+            "Runners lost their volume roots, or this check has stopped finding them."
+        )
+        return
+
+    for key, value in found:
+        named = re.match(wanted, value)
+        if not named:
+            problems.append(
+                f"compose.yaml sets {key} to {value!r}, which does not begin with "
+                "${COMPOSE_PROJECT_NAME:-%s}_. Compose prefixes a volume with the "
+                "project name and the Runner asks the daemon for what it was "
+                "given, so the two would name different volumes."
+                % project.group(1)
+            )
+        elif named.group(1) not in declared:
+            problems.append(
+                f"compose.yaml sets {key} to {value!r}, and {named.group(1)!r} is "
+                "not declared in the top-level volumes block."
+            )
+
+
 def the_stack_is_supplied_before_it_starts(problems):
     """`make up` fetches the language images before starting anything.
 
@@ -425,6 +487,7 @@ CHECKS = (
     one_postgres_major,
     the_product_tags_agree,
     the_language_images_have_one_spelling,
+    the_runner_volume_names_are_the_daemons,
     the_stack_is_supplied_before_it_starts,
     the_volume_is_above_pgdata,
     the_api_is_not_intercepted,
