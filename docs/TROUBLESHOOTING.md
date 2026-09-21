@@ -303,9 +303,9 @@ passes `RUNNER_TESTS_AT_ONCE` to all four services — so one narrow
 
 **A Runner with no cpuset reads the whole machine**, which is how this reaches a
 host nobody thought of as small: a width of four on a machine with two
-processors is refused whether the set is narrow or absent, and `runner-3` and
-`runner-4` ship unpinned. `0-3`, `4-7` and a width of four satisfy it on a
-machine with eight processors; a smaller host needs both changed.
+processors is refused whether the set is narrow or absent, and both cpusets
+ship empty. `0-3`, `4-7` and a width of four satisfy it on a machine with eight
+processors; a smaller host needs both changed.
 
 It refuses rather than judging slowly because **a time limit is processor
 time**. Two judged runs sharing one processor spend more of it on the same work,

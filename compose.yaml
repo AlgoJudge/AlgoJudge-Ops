@@ -499,11 +499,11 @@ services:
   # processors on one submission at a time instead of four, which is the trade
   # being made: fewer submissions judged at once, each answered sooner.
   #
-  # **`runner-3` and `runner-4` are behind the `runner-extra` profile**, for a
-  # host with more processors, or for an installation that would rather judge
-  # four submissions at once than one submission four ways. Add `runner-extra`
-  # to `COMPOSE_PROFILES` and give them cpusets of their own. More Runners than
-  # physical cores does not judge faster and does stop judging accurately.
+  # **Two Runners, and the fleet is fixed at two.** More Runners than physical
+  # cores does not judge faster and does stop judging accurately: every lane
+  # wants a core, and two of two is what eight processors of four cores give.
+  # A host with more capacity raises `RUNNER_TESTS_AT_ONCE`, which answers one
+  # submission sooner, rather than adding a Runner that answers another.
   runner-2:
     <<: *runner
     environment:
@@ -517,36 +517,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup
     cpuset: ${RUNNER_2_CPUSET:-}
-
-  runner-3:
-    <<: *runner
-    profiles: ["runner-extra"]
-    environment:
-      <<: *runner-env
-      AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-3
-      AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-3-work
-    volumes:
-      - runner-3-identity:/var/lib/algojudge-runner
-      - runner-cache:/var/cache/algojudge-runner
-      - runner-3-work:/var/lib/algojudge-runner/work
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /sys/fs/cgroup:/sys/fs/cgroup
-    cpuset: ${RUNNER_3_CPUSET:-}
-
-  runner-4:
-    <<: *runner
-    profiles: ["runner-extra"]
-    environment:
-      <<: *runner-env
-      AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-4
-      AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-4-work
-    volumes:
-      - runner-4-identity:/var/lib/algojudge-runner
-      - runner-cache:/var/cache/algojudge-runner
-      - runner-4-work:/var/lib/algojudge-runner/work
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /sys/fs/cgroup:/sys/fs/cgroup
-    cpuset: ${RUNNER_4_CPUSET:-}
 
   # ── The External Runner ─────────────────────────────────────────────────────
   #
@@ -666,8 +636,6 @@ volumes:
   objects:                   # unread under STORAGE_KIND=postgres
   runner-1-identity:
   runner-2-identity:
-  runner-3-identity:
-  runner-4-identity:
   # **What the four share**: one download, one unpacking, one built judge, under
   # a lock. Bounded at 10 GiB by the Runner itself, from inside.
   runner-cache:
@@ -676,7 +644,5 @@ volumes:
   # working -- so one between two Runners is one deleting the other's work.
   runner-1-work:
   runner-2-work:
-  runner-3-work:
-  runner-4-work:
   external-runner-identity:
   external-runner-cache:     # 256 MiB, bounded by the image

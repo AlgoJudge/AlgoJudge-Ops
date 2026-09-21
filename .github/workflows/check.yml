@@ -66,14 +66,6 @@ jobs:
           check "edge,app,data,runner" "client nginx postgres runner-1 runner-2 server"
           check "edge,app,data"        "client nginx postgres server"
           check "runner"               "runner-1 runner-2"
-
-          # **`runner-extra` is an addition, like `external-runner`.** The
-          # reference is two Runners, each judging two of one submission's tests
-          # at once; the other two are for a host with the processors to spare, and
-          # a profile that quietly started them would put four Runners back on a
-          # machine divided for two.
-          check "runner,runner-extra"  "runner-1 runner-2 runner-3 runner-4"
-          check "runner-extra"         "runner-3 runner-4"
           check "app,data"             "client postgres server"
 
           # The External Runner is an addition to any arrangement, so the four
@@ -99,13 +91,12 @@ jobs:
             -v "$PWD/certs:/etc/nginx/certs:ro" \
             nginx:1.30-alpine nginx -t
 
-  # **The stack is not brought up and asserted against here**, and since
-  # 2026-09-08 that is a choice rather than an impossibility: all eight images
-  # are published and public, so `algojudge-server:0` resolves for anyone.
+  # **The stack is not brought up and asserted against here**, and that is a
+  # choice rather than an impossibility: all eight images are public, so
+  # `algojudge-server:0.2` resolves for anyone.
   #
   # What it would cost is what has to be decided first. Bringing this stack up
   # in CI means pulling eight images and standing up PostgreSQL, the Server, the
-  # Client, nginx and at least one Runner on every push — and a Runner needs a
-  # writable cgroup tree and the Docker socket, which a hosted runner gives
-  # grudgingly. The release runbook stands one up by hand instead, from the tag,
-  # and `docs/RELEASE.md` records what that proved.
+  # Client, nginx and both Runners on every push — and a Runner needs a writable
+  # cgroup tree and the Docker socket, which a hosted runner gives grudgingly.
+  # The release runbook stands one up by hand instead, from the tag.

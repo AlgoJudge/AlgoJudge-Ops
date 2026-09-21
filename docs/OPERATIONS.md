@@ -474,9 +474,9 @@ there too, and the paragraph under *Maintenance* is the one to read first.
 **`RUNNER_TESTS_AT_ONCE` is how many of one submission's tests a Runner judges
 together**, each in a lane of its own — a piece of the processors that Runner
 was given, with a measurement home of its own. It buys latency on a single
-submission and nothing else: two Runners of four lanes judge two submissions at
-once, four Runners of one lane judge four, and `docs/INSTALL.md` under *How many
-Runners, and how wide* is where that trade is made.
+submission and nothing else: the fleet is two Runners whatever this says, so a
+wider setting answers one submission sooner rather than two at once.
+`docs/INSTALL.md` under *How many Runners, and how wide* has the arithmetic.
 
 **A lane is a set of live containers, so a width multiplies memory.** Per lane:
 one judged container at the problem's memory limit plus 64 MiB, one checker or

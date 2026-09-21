@@ -17,7 +17,7 @@ From an empty directory to an installation that judges a submission.
 
   **2.15.0 is the floor because of `cgroup: host`**, which `compose.yaml` sets on
   the Runner and which Compose first shipped in that version; `up -d --wait`,
-  used by `install.sh` and `update.sh`, needs 2.1.1. Nothing here uses the
+  used by `make up` and `update.sh`, needs 2.1.1. Nothing here uses the
   `env_file:` form that would ask for 2.24 — every value is passed through
   `environment:`.
 
@@ -124,8 +124,8 @@ answers `denied` and needs a token — which defeats the point of there being no
 registry login in these instructions. The workflow cannot do it; a person with
 access to the organization's packages must.
 
-**For 0.1 there is nothing to do: all eight are public.** Read without any
-credentials on 2026-09-08, at `0` and at `0.1.0`:
+**There is nothing to do: all eight are public.** Read without any credentials
+at `0.2` on 2026-09-21:
 
 | | |
 |---|---|
@@ -320,12 +320,13 @@ submissions are judged at once. **`RUNNER_TESTS_AT_ONCE` is how many of that
 submission's tests it judges together**, each in a **lane** — a piece of the
 Runner's `cpuset` with a measurement home of its own — so a participant waits
 for the slowest of the tests running together rather than for the sum of them.
-The two settings spend the same processors: two Runners of four lanes answer one
-submission sooner, four Runners of one lane answer four submissions at once.
+The two settings spend the same processors: a wider Runner answers one
+submission sooner, a narrower one leaves room for the other Runner to answer a
+second.
 
-**`runner` starts `runner-1` and `runner-2`; `runner-3` and `runner-4` are
-behind `runner-extra`.** Add that profile to `COMPOSE_PROFILES` and give the two
-of them cpusets of their own, on a host with the processors to spare.
+**`runner` starts `runner-1` and `runner-2`, and that is the whole fleet.** A
+host with capacity to spare widens them with `RUNNER_TESTS_AT_ONCE` rather than
+gaining a third.
 
 **The rule for dividing a machine is one Runner per group of processors, and one
 lane per processor in the group.** A lane wants a processor of its own, and the
@@ -360,11 +361,13 @@ Runners of one lane and three Runners of four are the same twelve judged runs.
 
 So the ceiling is a rule about correctness, and what it counts is the lanes:
 
-| Physical cores | Runners | `RUNNER_TESTS_AT_ONCE` |
-|---|---|---|
-| 4 | 1 | 4 |
-| 8 | **2** | **4** |
-| 16 | 4, with `runner-extra` | 4 |
+| Physical cores | `RUNNER_TESTS_AT_ONCE` |
+|---|---|
+| 4 | 2 |
+| 8 | **2** |
+| 16 | 8 |
+
+Two Runners throughout, each taking half the machine.
 
 `lscpu` says how many processors there are, and *Core(s) per socket* times
 *Socket(s)* how many physical cores — which is **not** the CPU count when a core
@@ -416,8 +419,8 @@ two in how fast a contest is judged, and the difference is in the problems.
 timeout; nothing is judged until an administrator approves it, which is what
 stops somebody from attaching a machine of their own to your installation.
 
-In the panel: **Runners**, and approve each of the two that appeared — four,
-with `runner-extra`. Their logs say `waiting: this Runner has not been approved
+In the panel: **Runners**, and approve each of the two that appeared. Their
+logs say `waiting: this Runner has not been approved
 yet` until you do, and an unapproved Runner is simply idle — the others carry
 the queue, so a forgotten approval shows up as a slow installation rather than
 as an error.
@@ -520,14 +523,12 @@ RUNNER_TESTS_AT_ONCE=2
 **Each Runner host needs Docker Engine 26 or later**, and its own disk where
 Docker keeps volumes — the Runners' cache and scratch are volumes on the
 machine that judges, not on the application host. A lab machine below that
-engine keeps the host directories: see
-[Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
+engine cannot run Runners at all; `preflight.sh` refuses there.
 
-**The profile starts two Runners**, named `lab-a-1` and `lab-a-2` here;
-`runner-extra` adds `lab-a-3` and `lab-a-4` on a host with the processors for
-them. The prefix has to differ per host, or two machines' Runners appear in the
-panel under one set of names. On a host with fewer physical cores, run narrower
-or fewer: see *How many Runners, and how wide* above.
+**The profile starts two Runners**, named `lab-a-1` and `lab-a-2` here. The
+prefix has to differ per host, or two machines' Runners appear in the panel
+under one set of names. On a host with fewer physical cores, run narrower: see
+*How many Runners, and how wide* above.
 
 The Runner opens every connection itself — it needs no inbound port and works
 from behind a home router. Each one registers separately and needs its own

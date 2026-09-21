@@ -42,7 +42,7 @@ RETENTION=$(setting GC_TMP_RETENTION_DAYS 7)
 # Runner this host does not run. It also cannot bring one into existence by
 # naming it, which `docker run -v` would.
 sweeper="nginx:$(setting NGINX_TAG 1.30-alpine)"   # as `preflight.sh` probes with
-for n in 1 2 3 4; do
+for n in 1 2; do
     container=$(compose ps -q "runner-$n" 2>/dev/null) || continue
     [ -n "$container" ] || continue
     volume=$(docker inspect -f \

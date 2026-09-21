@@ -71,7 +71,7 @@ if runs_service runner-1 runner; then
         # arithmetic below never sees it.
         host_processors=$(nproc 2>/dev/null || echo 0)
         case ",$(setting COMPOSE_PROFILES ''),"  in
-            *,runner,*|*,runner-extra,*)
+            *,runner,*)
                 if [ "$host_processors" -gt 0 ] && [ "$lanes" -gt "$host_processors" ]; then
                     report "RUNNER_TESTS_AT_ONCE is $lanes and this host has
        $host_processors processor(s). A Runner refuses to start when it cannot
@@ -81,19 +81,8 @@ if runs_service runner-1 runner; then
                 ;;
         esac
 
-        for n in 1 2 3 4; do
+        for n in 1 2; do
             eval "set_for_runner=\${RUNNER_${n}_CPUSET:-}"
-            # `runner-1` and `runner-2` start with `runner`, the other two
-            # only with `runner-extra`. Reporting on one that does not start is
-            # a report nobody can act on.
-            case "$n" in
-                1|2) wanted=runner ;;
-                *)   wanted=runner-extra ;;
-            esac
-            case ",$(setting COMPOSE_PROFILES ''),"  in
-                *,"$wanted",*) ;;
-                *) continue ;;
-            esac
             [ -n "$set_for_runner" ] || continue
 
             # **Every processor a cpuset names has to be on this host**, or

@@ -115,9 +115,18 @@ score moved. Nothing here stops the release.
   `/runner/problem-types`, `/client/manager/packages` and
   `/client/participant/results`.
 
-- **The cpusets ship empty**, which is every processor the host has. An
-  installation that never set them was asking for processors 0 to 7 and failed
-  to create a Runner on any smaller machine.
+- **Four Runners become two, and that halves how many submissions are judged at
+  once.** On the 0.1 line `runner-2`, `runner-3` and `runner-4` all inherited
+  the `runner` profile, so an installation there starts four. This stack defines
+  two. `runner-3` and `runner-4` stop and stay stopped; the panel shows them
+  offline until somebody removes them, and their identity volumes keep a key
+  nothing will use again.
+
+  **The capacity comes back as width rather than as count.** Their `.env` has no
+  `RUNNER_TESTS_AT_ONCE`, so each Runner still judges one test at a time. Adding
+  `RUNNER_TESTS_AT_ONCE=2` gives each of the two Runners two lanes, which answers
+  one submission sooner instead of answering two at once. On a machine that was
+  running four Runners there are processors for it.
 
 - **A rollback goes back one update and reads `state/previous.lock`.** It is
   written immediately before a swap, so an installation that has not updated
@@ -206,7 +215,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $token" \
       COMPOSE_PROFILES=edge,app,data,runner docker compose config --services
 
       The `topologies` job in `.github/workflows/check.yml` is the list and the
-      expected answers, and it checks eight. **One arrangement is only here**:
+      expected answers, and it checks six. **One arrangement is only here**:
       `client,server,data`, which `README.md` documents and that job does not
       check.
 - [ ] `./scripts/preflight.sh` refuses what it should on a deliberately wrong
