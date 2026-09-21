@@ -105,13 +105,8 @@ def no_secret_committed(problems):
 
 
 def env_example_and_compose_agree(problems):
-    """Every variable compose expands appears in `.env.example`, and back.
-
-    **Both files.** `compose.directories.yaml` is an overlay an installation
-    copies over `compose.override.yaml`, and a variable only it expands is
-    still a variable an operator sets.
-    """
-    compose = read("compose.yaml") + read("compose.directories.yaml")
+    """Every variable compose expands appears in `.env.example`, and back."""
+    compose = read("compose.yaml")
     example = read(".env.example")
 
     # `${NAME}`, `${NAME:-default}`, `${NAME:?message}`. Not the `AJ_`-prefixed
@@ -149,12 +144,7 @@ def env_example_and_compose_agree(problems):
 
 
 def secrets_have_no_defaults(problems):
-    """The two that must not start with a working value, do not have one.
-
-    `RUNNER_WORK_DIR` was a third until 2026-09-16, when the Runners' scratch
-    became a Docker volume by default: empty is the working answer now rather
-    than an unmade decision, and it is set only with `compose.directories.yaml`.
-    """
+    """The two that must not start with a working value, do not have one."""
     example = read(".env.example")
     for name in ("AJ_ADMIN_TOKEN", "POSTGRES_PASSWORD"):
         match = re.search(rf"^{name}=(.*)$", example, re.MULTILINE)

@@ -39,7 +39,6 @@ other.
 | | |
 |---|---|
 | `compose.yaml` | every service, eight profile names, one file |
-| `compose.directories.yaml` | the Runners' cache and scratch as host directories instead of volumes, for a daemon older than Engine 26 |
 | `.env.example` | every variable, with no secret values |
 | `nginx/` | TLS, one origin for both halves, and the page for when the Client is gone |
 | `scripts/` | preflight, pull, backup, restore, update, rollback, maintenance, gc, render-tls, install-cron, check-repository, and the `lib/` they share |

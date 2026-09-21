@@ -315,36 +315,42 @@ what was replaced, which is what a rollback restores. Digests cannot live in
 this repository — it is a product many organizations deploy independently, and
 none of them can commit to it.
 
-### Updating past 2026-09-16, when the Runners moved into volumes
+### Coming from the 0.1 line
 
-An installation that was running before that day keeps its cache and scratch in
-host directories, and the update switches it to volumes. Three things follow,
-and none of them loses anything a participant can see:
+**0.2 is not compatible with 0.1, and this stack is the 0.2 line.** The four
+product tags are `0.2`, so an installation does not cross a minor by pulling;
+it crosses by being moved to a new release of this repository, which is where
+the upgrade a minor needs is written down.
 
-- **The package cache starts empty.** The first submission to each problem
-  downloads and builds again — minutes, once, per problem. **Do not update
-  on a contest morning** for that reason alone.
-- **The old directories are left where they are.** Nothing removes them, and
-  nothing reads them either. `RUNNER_CACHE_DIR` and `RUNNER_WORK_DIR` in the
-  old `.env` become inert; remove them once you are satisfied, and then
-  `sudo rm -rf /srv/algojudge/runner-cache /srv/algojudge/runner-work`.
-- **A daemon older than Engine 26 must keep the directories**, and the update
-  does not check for you before it starts. Run `./scripts/preflight.sh` first:
-  it reports the daemon's API version against 1.45 and names the overlay.
-
-**To stay on the directories**, before `up -d`:
+An installation made from `v0.1.0` has that tag's `update.sh`, which predates
+the rule that installations follow releases: it runs `git pull`, warns on a
+release checkout and stays. Move it once by hand:
 
 ```bash
-cp compose.directories.yaml compose.override.yaml
+git fetch --tags
+git checkout v0.2.0
+./scripts/preflight.sh
+./scripts/update.sh
 ```
 
-The `.env` already has the two paths, so nothing else changes. That is the
-supported arrangement, not a deprecated one.
+Three things follow, and none of them loses anything a participant can see:
 
-**An installation older than 2026-09-15** may still have an `algojudge_runner-cache`
-volume from before the directories, holding a layout no current Runner reads.
-**The new cache volume has that same name, so Compose attaches the old one**
-rather than making a fresh one. Remove it before the first start:
+- **The Runners' scratch moves from a host directory into a volume.** The 0.1
+  line set `RUNNER_WORK_DIR`; there is no such setting here. The old directory
+  is left where it is, read by nothing, and
+  `sudo rm -rf /srv/algojudge/runner-work` takes it away once you are
+  satisfied. Remove `RUNNER_WORK_DIR` and `RUNNER_CACHE_DIR` from `.env`:
+  `preflight.sh` reports a setting nothing reads.
+- **The package cache starts empty.** The first submission to each problem
+  downloads and builds again -- minutes, once, per problem. **Do not update on
+  a contest morning** for that reason alone.
+- **The daemon must be Engine 26 or later** on a host that runs Runners.
+  `preflight.sh` refuses below that; there is no arrangement that avoids it.
+
+**An installation older than 2026-09-15** may still have an
+`algojudge_runner-cache` volume holding a layout no current Runner reads. The
+cache volume has that same name, so Compose attaches the old one rather than
+making a fresh one. Remove it before the first start:
 
 ```bash
 docker volume rm algojudge_runner-cache
@@ -507,8 +513,7 @@ repository's own logs.
 **The scratch is swept from inside a container**, because each Runner's is a
 volume with no path this host can open. `gc.sh` reads the volume off the
 running container rather than naming it, so it needs no guess about the project
-name and skips a Runner this host does not run; with the directories overlay it
-sweeps the host directories exactly as it always did. **Strays are normal, not
+name and skips a Runner this host does not run. **Strays are normal, not
 a defect** — a Runner killed mid-evaluation cannot tidy up after itself, and
 nothing else removes what it left: a Runner empties the one directory it is
 about to use and no other, and the job it dropped is usually re-claimed by a

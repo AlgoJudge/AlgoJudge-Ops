@@ -25,12 +25,9 @@ From an empty directory to an installation that judges a submission.
   (Podman 5 or later), which is April 2024. A package is unpacked once into the
   volume the Runners share and each judged container mounts its subdirectory
   out of there, which is a `subpath` mount and arrived in Engine 26 / API 1.45.
-  An older daemon cannot express it, and the Runner refuses to judge rather
-  than judge against an empty directory. **An installation below that floor is
-  still supported** and keeps the host directories this stack used until
-  2026-09-16: see
-  [Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
-  Nothing else in the stack needs 26, so an application host is unaffected.
+  An older daemon cannot express it, the Runner refuses to judge rather than
+  judge against an empty directory, and `preflight.sh` refuses first. Nothing
+  else in the stack needs 26, so an application host is unaffected.
 - **The cgroup tree, and no daemon reconfiguration.** The stack measures a
   submission's processor time and peak memory from a cgroup, because neither is
   available any other way: a container's own cgroup does not outlive it, and the
@@ -102,9 +99,8 @@ From an empty directory to an installation that judges a submission.
   byte the Runners hold lives there rather than under a path you chose —
   usually `/var/lib/docker/volumes` — and the shared package cache is the big
   one, bounded by the Runner at **10 GiB**; each Runner's scratch is a
-  submission at a time. On a host whose `/var` is small and whose `/srv` is
-  not, either move Docker's data root or keep the host directories: see
-  [Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
+  submission at a time. On a host whose `/var` is small, move Docker's data
+  root.
 - **A bounded container log driver is not a host requirement.** `compose.yaml`
   sets `logging:` on every service itself — Docker's `local` driver, bounded by
   `LOG_MAX_SIZE` and `LOG_MAX_FILES` in `.env` — so the stack does not depend on
@@ -204,9 +200,9 @@ AJ_ADMIN_TOKEN=          # openssl rand -base64 36
 POSTGRES_PASSWORD=       # openssl rand -base64 36, a different one
 ```
 
-**There is no third.** `RUNNER_WORK_DIR` was one until 2026-09-16, when the
-Runners' cache and scratch became Docker volumes: there is no host path to
-choose anymore, and nothing to create or permission before the first start.
+**There is no third.** The Runners' cache and scratch are Docker volumes, so
+there is no host path to choose and nothing to create or permission before the
+first start.
 
 ## Where the Runners keep their bytes
 
@@ -228,60 +224,12 @@ the database, and the next submission of every package downloads and builds
 again. That is minutes of a participant's time rather than data loss, but it is
 not nothing on a contest morning.
 
-### If your daemon is older than Engine 26
+### What the daemon has to be able to do
 
-The package a judge's container mounts is a **subdirectory** of the shared cache
-volume, and mounting one needs `subpath`: Docker Engine 26 / API 1.45 (April
-2024), or Podman 5. Below either, the Runner refuses to judge, and
-`preflight.sh` says so before you find out from a submission.
-
-That installation keeps the host directories instead, which is the arrangement
-this stack shipped until 2026-09-16 and is supported, not deprecated:
-
-```bash
-cp compose.directories.yaml compose.override.yaml
-```
-
-Then set `RUNNER_WORK_DIR` in `.env` — **an absolute host path**, because the
-Runner hands it to the Docker daemon and **a path the daemon cannot open
-becomes an empty directory rather than an error**, so every submission would
-run against nothing with no test failing visibly. `RUNNER_CACHE_DIR` has a
-working default; keep it **out of** `RUNNER_WORK_DIR`, whose first-level
-directories the scheduled cleanup removes by age. `preflight.sh` checks all
-three and says which one is wrong.
-
-```bash
-sudo mkdir -p /srv/algojudge/runner-work
-```
-
-Making it yourself is optional: Compose creates a missing bind-mount source as
-**root, mode 0755**, which is what this needs. What breaks it is a directory
-locked down by hand — jobs then fail with `Permission denied (os error 13)`
-from inside the sandbox layer. `preflight.sh` probes both halves, writing as
-root and reading back as 65534, and says which one failed.
-
-**If you set `COMPOSE_FILE`, name `compose.override.yaml` in it.** Compose reads
-that file by itself only while `COMPOSE_FILE` is unset, and dropping it would
-start the Runners on empty volumes instead of these directories.
-
-*`chown 65532:65532` also works and costs nothing; the Runner runs as root, so
-it is not needed.*
-
-Two more worth reading before the first start:
-
-- **`TRUSTED_PROXY_NETWORKS`** decides whose word the Server takes for a
-  visitor's address. It defaults to the Compose network the bundled nginx sits
-  on, and must be a **network** address: `172.28.0.5/24` is refused at startup,
-  by name, with the address it should have been.
-- **`DOCKER_GID`** is the group that owns the daemon's socket. The Runner runs
-  as root and reaches the socket whatever groups it is in, so a wrong value no
-  longer stops anything and `preflight.sh` only warns about it. `preflight.sh` reads the
-  real number and tells you if yours is wrong — on Docker Desktop the socket is
-  `root:root`, so it is `0`; on a Linux host it is the `docker` group's id:
-
-  ```bash
-  getent group docker | cut -d: -f3
-  ```
+The package a judge's container mounts is a **subdirectory** of the shared
+cache volume, and mounting one needs `subpath`: **Docker Engine 26 / API 1.45**
+(April 2024), or Podman 5. Below either, the Runner refuses to judge, and
+`preflight.sh` refuses before you find out from a submission.
 
 ## 2. A certificate
 
@@ -698,11 +646,8 @@ COMPOSE_FILE="compose.yaml:compose.override.yaml:state/lti.compose.yaml"
 ```
 
 Compose reads `compose.override.yaml` by itself **only while `COMPOSE_FILE` is
-unset**. Setting it silently drops that file, and if yours is the copy of
-`compose.directories.yaml` described under
-[Where the Runners keep their bytes](#where-the-runners-keep-their-bytes), the
-Runners would come up on empty volumes rather than on the directories holding
-every package they have downloaded and built.
+unset**. Setting it silently drops that file, so an installation with an overlay
+of its own has to name it here too.
 
 **And the frame header has to go**, if your LMS is on a different name from this
 installation. `X-Frame-Options: SAMEORIGIN` — which `nginx/snippets/security-headers.conf`

@@ -352,14 +352,9 @@ services:
       # package it has downloaded with what was unpacked and built from it. One
       # preparation is shared between all four, under a lock.
       #
-      # **It was a host directory until 2026-09-16, and the reason it could not
-      # be a volume was real.** A judge's container mounts the unpacked package
-      # out of here, and the daemon could not open a volume *by path* — so the
-      # cache had to be a directory both this Runner and the daemon could name.
-      # A volume's subdirectory travels as `subpath` now, which needs Engine 26
-      # / API 1.45 (April 2024) and, on Podman, 5.x. An installation below
-      # either keeps the directories: see `compose.directories.yaml`, which is
-      # that arrangement unchanged.
+      # **A judge's container mounts the unpacked package out of here**, as a
+      # volume `subpath` -- which needs Engine 26 / API 1.45 (April 2024) or
+      # Podman 5. `scripts/preflight.sh` refuses a daemon below that.
       - runner-cache:/var/cache/algojudge-runner
       - runner-1-work:/var/lib/algojudge-runner/work
       # The Runner starts **sibling** containers through the daemon. Job

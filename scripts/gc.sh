@@ -33,52 +33,31 @@ RETENTION=$(setting GC_TMP_RETENTION_DAYS 7)
 # takes minutes; deleting a directory a Runner is still using would fail an
 # evaluation that was going to succeed.
 
-# **Which arrangement this is, asked of the rendered compose file rather than
-# of a variable.** `RUNNER_WORK_DIR` goes inert after a move to volumes and the
-# directory it named stays on disk, so choosing by that would sweep what nothing
-# writes to. `scripts/preflight.sh` asks the same way.
-directories=no
-if compose config 2>/dev/null | grep -q 'AJ_Work__HostPath'; then
-    directories=yes
-fi
+# **Each Runner's scratch is a volume of its own**, with no path this shell can
+# open, so it is swept from inside a throwaway container, one per Runner.
 
-work=${RUNNER_WORK_DIR:-}
-if [ "$directories" = yes ] && [ -n "$work" ] && [ -d "$work" ]; then
-    # **The directories overlay**, where the scratch is one host directory with
-    # a directory per Runner under it and this shell can reach all of it.
-    removed=$(find "$work" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION" -print 2>/dev/null | wc -l)
-    if [ "$removed" -gt 0 ]; then
-        find "$work" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION" -exec rm -rf {} + 2>/dev/null
-        log "removed $removed work director(y|ies) older than $RETENTION days"
-    fi
-else
-    # **The default, where each Runner's scratch is a volume of its own** and
-    # has no path this shell can open. Swept from inside a throwaway container
-    # instead, one per Runner.
-    #
-    # **The volume is read off the running container rather than named here.**
-    # Compose prefixes a volume with the project name, which an installation may
-    # set; asking the container that has it mounted needs no guess and skips a
-    # Runner this host does not run. It also cannot bring one into existence by
-    # naming it, which `docker run -v` would.
-    sweeper="nginx:$(setting NGINX_TAG 1.30-alpine)"   # as `preflight.sh` probes with
-    for n in 1 2 3 4; do
-        container=$(compose ps -q "runner-$n" 2>/dev/null) || continue
-        [ -n "$container" ] || continue
-        volume=$(docker inspect -f \
-            '{{range .Mounts}}{{if eq .Destination "/var/lib/algojudge-runner/work"}}{{.Name}}{{end}}{{end}}' \
-            "$container" 2>/dev/null)
-        [ -n "$volume" ] || continue
-        removed=$(MSYS_NO_PATHCONV=1 docker run --rm -u 0:0 -v "$volume:/work" "$sweeper" \
-            sh -c "find /work -mindepth 1 -maxdepth 1 -type d -mtime +$RETENTION -print | wc -l" \
-            2>/dev/null | tr -d '[:space:]')
-        case "${removed:-0}" in ''|*[!0-9]*) continue ;; 0) continue ;; esac
-        MSYS_NO_PATHCONV=1 docker run --rm -u 0:0 -v "$volume:/work" "$sweeper" \
-            sh -c "find /work -mindepth 1 -maxdepth 1 -type d -mtime +$RETENTION -exec rm -rf {} +" \
-            >/dev/null 2>&1
-        log "removed $removed work director(y|ies) older than $RETENTION days from $volume"
-    done
-fi
+# **The volume is read off the running container rather than named here.**
+# Compose prefixes a volume with the project name, which an installation may
+# set; asking the container that has it mounted needs no guess and skips a
+# Runner this host does not run. It also cannot bring one into existence by
+# naming it, which `docker run -v` would.
+sweeper="nginx:$(setting NGINX_TAG 1.30-alpine)"   # as `preflight.sh` probes with
+for n in 1 2 3 4; do
+    container=$(compose ps -q "runner-$n" 2>/dev/null) || continue
+    [ -n "$container" ] || continue
+    volume=$(docker inspect -f \
+        '{{range .Mounts}}{{if eq .Destination "/var/lib/algojudge-runner/work"}}{{.Name}}{{end}}{{end}}' \
+        "$container" 2>/dev/null)
+    [ -n "$volume" ] || continue
+    removed=$(MSYS_NO_PATHCONV=1 docker run --rm -u 0:0 -v "$volume:/work" "$sweeper" \
+        sh -c "find /work -mindepth 1 -maxdepth 1 -type d -mtime +$RETENTION -print | wc -l" \
+        2>/dev/null | tr -d '[:space:]')
+    case "${removed:-0}" in ''|*[!0-9]*) continue ;; 0) continue ;; esac
+    MSYS_NO_PATHCONV=1 docker run --rm -u 0:0 -v "$volume:/work" "$sweeper" \
+        sh -c "find /work -mindepth 1 -maxdepth 1 -type d -mtime +$RETENTION -exec rm -rf {} +" \
+        >/dev/null 2>&1
+    log "removed $removed work director(y|ies) older than $RETENTION days from $volume"
+done
 
 # ── Job containers nobody collected ─────────────────────────────────────────
 #

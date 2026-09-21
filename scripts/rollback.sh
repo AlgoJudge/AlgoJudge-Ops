@@ -132,11 +132,8 @@ $from_update || "$ROOT/scripts/maintenance.sh" on "rollback" --wait-closed || tr
 # with a bare `compose up`, and this is now the same.
 #
 # **`compose.override.yaml` has to be named as well**, because setting
-# `COMPOSE_FILE` at all is what stops Compose from reading it by itself. It is not
-# only somebody's extra service now: `compose.directories.yaml` is copied to it
-# by an installation whose daemon cannot mount a volume's subdirectory, and
-# dropping it here would start the Runners on empty volumes instead of the host
-# directories holding everything they have prepared.
+# `COMPOSE_FILE` at all is what stops Compose from reading it by itself, and
+# dropping an installation's own overlay here would take its services with it.
 log "starting the recorded images"
 if ! (
     base=compose.yaml

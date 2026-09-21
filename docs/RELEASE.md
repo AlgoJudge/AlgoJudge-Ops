@@ -178,18 +178,16 @@ needs no `docker login` either.
 - [ ] `./scripts/preflight.sh` refuses what it should on a deliberately wrong
       `.env` — an empty password, an empty or short token, a CIDR with host bits,
       an unknown `STORAGE_KIND`, and the external Runner's account left empty
-      while its profile is on. Then with `compose.directories.yaml` copied over
-      `compose.override.yaml`: an empty work directory and a relative one are
-      refused only there, and without the overlay neither is a fault.
+      while its profile is on. And a daemon below API 1.45 on a host that runs
+      Runners, which is a refusal rather than a warning.
 - [ ] nginx **starts** with the configuration rather than merely parsing it. CI
       runs `nginx -t`, which is a test and not a start, so do the start here.
       Outside the Compose network it needs `--add-host server:127.0.0.1
       --add-host client:127.0.0.1`: nginx resolves every upstream while reading
       the configuration.
 - [ ] **`.env.example` agrees with the compose files and with the scripts, both
-      ways.** The checker does the compose half, `compose.yaml` and
-      `compose.directories.yaml` together; the script half is the `setting
-      NAME` and `${NAME}` reads in `scripts/`. `COMPOSE_PROFILES`,
+      ways.** The checker does the compose half; the script half is the
+      `setting NAME` and `${NAME}` reads in `scripts/`. `COMPOSE_PROFILES`,
       `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` and `ALGOJUDGE_LOCK_HELD` are the
       deliberate exceptions — Compose's own, or internal to the scripts.
 - [ ] **No `.env` in the repository, only `.env.example`.** Check the working
