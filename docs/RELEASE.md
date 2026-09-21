@@ -44,23 +44,27 @@ a setting can exist in `compose.yaml` before the image that reads it ships. Most
 of that is harmless — a Runner that does not know `AJ_Runner__TestsAtOnce`
 ignores it and judges one test at a time, exactly as before.
 
-**One entry is not harmless**, and it is why this section exists:
+**The list is empty.** Every key this stack sets is read by the images the four
+tags resolve to today.
 
-- **The Runners' cache and scratch are volumes** since 2026-09-16, named in
-  `AJ_Cache__Volume` and `AJ_Work__Volume`. A Runner image that does not read
-  those keys ignores them, falls back to `AJ_Cache__HostPath`, and hands the
-  daemon a **container** path — which becomes an empty directory rather than
-  an error, so every submission is judged against nothing and no test fails
-  visibly. **`RUNNER_TAG=0` must resolve to a Runner carrying that support
-  before this stack is tagged**, which means releasing AlgoJudge-Runner first
-  and checking the image, not the commit:
+**An entry belongs here when an image would ignore a key rather than refuse
+it**, which is the case that produces no error anywhere. It is settled against
+the published image and not against a commit, because the tag is what an
+installation pulls:
 
-  ```bash
-  docker run --rm ghcr.io/algojudge/algojudge-runner:0 --help 2>&1 | grep -i volume
-  ```
+```bash
+docker pull -q ghcr.io/algojudge/algojudge-runner:0
+docker image inspect ghcr.io/algojudge/algojudge-runner:0 \
+    --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
+```
 
-  An installation below Docker Engine 26 keeps `compose.directories.yaml`, and
-  that arrangement is unaffected either way.
+Every image here carries both labels, so that answers which release the moving
+tag is and which commit built it — and the key can then be looked for in that
+repository at that revision.
+
+**The Runner reads no arguments at all**, so asking it anything through
+`--help` answers with its first refusal about configuration and nothing about
+its keys.
 
 ## What the next tag changes for the people using it
 
@@ -140,11 +144,16 @@ needs no `docker login` either.
       on `release/0.1.0`**. Merge it, or open the pull request, and read that
       run — this repository has no release workflow to refuse a tag that never
       had one.
-- [ ] `python3 scripts/check-repository.py` — nine checks, the same run CI does.
+- [ ] `python3 scripts/check-repository.py` — the same run CI does. **Read the
+      count it prints rather than one written here**; it goes up when a check is
+      added and a number in this file does not.
       **What it covers**: no committed configuration file assigns a literal to a
       secret-shaped setting; `.env.example` and the compose files name the
       same variables; the two with no default are empty; one PostgreSQL major in
-      both files; the four product tags agree across both files; `pgdata` is
+      both files; the four product tags agree across both files; `compose.yaml`
+      and `scripts/lib/images.sh` name the same four language images; every
+      `AJ_*__Volume` carries the project name and a volume that is declared;
+      `make up` fetches the images before starting anything; `pgdata` is
       mounted above `PGDATA`; nginx does not intercept the API, does not answer
       `503` and refuses `/api/v1/admin`; nothing names a bare `/health`; every
       script has a shebang, LF endings and mode `100755` in Git.
@@ -153,16 +162,17 @@ needs no `docker login` either.
       variable a script reads with **no** `.env.example` line would pass; it
       skips `.py` files in the secret scan; it never runs `docker compose`; and
       nothing anywhere reads prose. The three steps below are the rest, by hand.
-- [ ] `bash -n` over every script in `scripts/` and `scripts/lib/`. Ten of them.
+- [ ] `bash -n` over every script in `scripts/` and `scripts/lib/`. The glob CI
+      uses is `scripts/*.sh scripts/lib/*.sh`, and it prints the count it found.
 - [ ] **Every arrangement resolves**, with a throwaway `.env` carrying the two
       values that have no default:
 
       COMPOSE_PROFILES=edge,app,data,runner docker compose config --services
 
-      and the same for `edge,app,data`, `runner`, `app,data`, both external ones,
-      and `client,server,data` — which `README.md` documents and the `topologies`
-      job in `.github/workflows/check.yml` does not check. That job is the list
-      and the expected answers for the other six.
+      The `topologies` job in `.github/workflows/check.yml` is the list and the
+      expected answers, and it checks eight. **One arrangement is only here**:
+      `client,server,data`, which `README.md` documents and that job does not
+      check.
 - [ ] `./scripts/preflight.sh` refuses what it should on a deliberately wrong
       `.env` — an empty password, an empty or short token, a CIDR with host bits,
       an unknown `STORAGE_KIND`, and the external Runner's account left empty
@@ -194,10 +204,14 @@ needs no `docker login` either.
       site's `/install/` section is written from, so **drift here becomes drift
       there**. Nothing checks the two against each other, and nothing reads a
       comment in `compose.yaml`, `.env.example`, `nginx/`, `cron/` or `scripts/`.
-- [ ] **The sentences saying nothing has been released.** Three go stale the
-      moment `0.1.0` exists: `docs/INSTALL.md` (*Not done yet*, under the
-      public-packages section), `docs/OPERATIONS.md` (*Running against locally
-      built images*), and the closing comment in `.github/workflows/check.yml`.
+- [ ] **The sentences that name a release line.** Find them rather than working
+      from a list here, which goes stale exactly as they do:
+
+      git grep -nE '0\.[0-9]+(\.[0-9]+)?' -- docs README.md .env.example .github
+
+      Each hit is about the line being released, about one that is still
+      current, or stale. `docs/INSTALL.md`'s public-packages paragraph carries
+      a line and a date, so it is one of them at every release.
 
 ## Every image this repository pins
 
@@ -360,15 +374,14 @@ follows is a real installation: clone the tag, `preflight.sh`, `up -d --wait`,
 approve the Runners, and a submission that gets a verdict. **Until that has
 happened once, the release is untested where it counts.**
 
-Then the two things this repository has been holding until images exist:
-
-- the commented block at the foot of `.github/workflows/check.yml` — whether CI
-  now brings the stack up and asserts against it;
-- `docs/OPERATIONS.md`'s *Running against locally built images*, which is the
-  workaround for having no registry.
+**CI still does not bring the stack up and assert against it**, and since the
+images are published that is a decision rather than an impossibility. The
+commented block at the foot of `.github/workflows/check.yml` is where it would
+go.
 
 The documentation site cuts its `/install/` snapshot on release day, from
-`AlgoJudge-Docs`.
+`AlgoJudge-Docs`. **A minor gets one or it never does**: the script takes a
+minor, refuses a patch version, and refuses to re-cut a directory that exists.
 ### The public website states this component's version
 
 `algojudge.pl` prints **`Ops v<version>`** in four places — a card badge and a
