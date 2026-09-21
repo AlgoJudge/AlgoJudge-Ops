@@ -5,10 +5,13 @@
 #     ./scripts/rollback.sh
 #     ./scripts/rollback.sh --yes
 #
-# **Digests, not tags.** `state/current.lock` holds what was actually running, so
-# this restores that image whatever `SERVER_TAG` points at today — which is the
-# whole reason the lock file exists. A moving tag that has since moved again
-# would otherwise roll forward.
+# **Digests, not tags.** `state/previous.lock` holds what was actually running
+# before the last update, so this restores that image whatever `SERVER_TAG`
+# points at today — which is the whole reason the lock file exists. A moving tag
+# that has since moved again would otherwise roll forward.
+#
+# **Not `state/current.lock`**, which names what is running now: restoring that
+# would report a rollback and change nothing.
 #
 # **A rollback is not a time machine, and this script says so.** If the update
 # applied a migration, putting the old image back leaves a database whose schema
@@ -34,10 +37,12 @@ done
 
 $from_update || lock
 
-LOCK_FILE="$ROOT/state/current.lock"
-[ -s "$LOCK_FILE" ] || die "no state/current.lock, so there is no recorded set of images
-       to go back to. It is written by a successful update; an installation that
-       has never updated has nothing to roll back to."
+LOCK_FILE="$ROOT/state/previous.lock"
+[ -s "$LOCK_FILE" ] || die "no state/previous.lock, so there is no recorded set of images
+       to go back to. It is written by scripts/update.sh immediately before it
+       swaps the images; an installation that has not updated since has nothing
+       to roll back to. state/current.lock is not a substitute: it names what is
+       running, so restoring it would change nothing."
 
 log "rolling back to:"
 sed 's/^/       /' "$LOCK_FILE"
@@ -127,11 +132,8 @@ $from_update || "$ROOT/scripts/maintenance.sh" on "rollback" --wait-closed || tr
 # with a bare `compose up`, and this is now the same.
 #
 # **`compose.override.yaml` has to be named as well**, because setting
-# `COMPOSE_FILE` at all is what stops Compose from reading it by itself. It is not
-# only somebody's extra service now: `compose.directories.yaml` is copied to it
-# by an installation whose daemon cannot mount a volume's subdirectory, and
-# dropping it here would start the Runners on empty volumes instead of the host
-# directories holding everything they have prepared.
+# `COMPOSE_FILE` at all is what stops Compose from reading it by itself, and
+# dropping an installation's own overlay here would take its services with it.
 log "starting the recorded images"
 if ! (
     base=compose.yaml
@@ -141,7 +143,7 @@ if ! (
     compose up -d --remove-orphans
 ); then
     die "could not start the recorded images. They may have been pruned — check
-       \`docker images\`. state/current.lock still names them."
+       \`docker images\`. state/previous.lock still names them."
 fi
 
 if wait_healthy 120; then

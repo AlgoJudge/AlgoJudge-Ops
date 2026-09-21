@@ -17,7 +17,7 @@ From an empty directory to an installation that judges a submission.
 
   **2.15.0 is the floor because of `cgroup: host`**, which `compose.yaml` sets on
   the Runner and which Compose first shipped in that version; `up -d --wait`,
-  used by `install.sh` and `update.sh`, needs 2.1.1. Nothing here uses the
+  used by `make up` and `update.sh`, needs 2.1.1. Nothing here uses the
   `env_file:` form that would ask for 2.24 — every value is passed through
   `environment:`.
 
@@ -25,12 +25,9 @@ From an empty directory to an installation that judges a submission.
   (Podman 5 or later), which is April 2024. A package is unpacked once into the
   volume the Runners share and each judged container mounts its subdirectory
   out of there, which is a `subpath` mount and arrived in Engine 26 / API 1.45.
-  An older daemon cannot express it, and the Runner refuses to judge rather
-  than judge against an empty directory. **An installation below that floor is
-  still supported** and keeps the host directories this stack used until
-  2026-09-16: see
-  [Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
-  Nothing else in the stack needs 26, so an application host is unaffected.
+  An older daemon cannot express it, the Runner refuses to judge rather than
+  judge against an empty directory, and `preflight.sh` refuses first. Nothing
+  else in the stack needs 26, so an application host is unaffected.
 - **The cgroup tree, and no daemon reconfiguration.** The stack measures a
   submission's processor time and peak memory from a cgroup, because neither is
   available any other way: a container's own cgroup does not outlive it, and the
@@ -102,9 +99,8 @@ From an empty directory to an installation that judges a submission.
   byte the Runners hold lives there rather than under a path you chose —
   usually `/var/lib/docker/volumes` — and the shared package cache is the big
   one, bounded by the Runner at **10 GiB**; each Runner's scratch is a
-  submission at a time. On a host whose `/var` is small and whose `/srv` is
-  not, either move Docker's data root or keep the host directories: see
-  [Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
+  submission at a time. On a host whose `/var` is small, move Docker's data
+  root.
 - **A bounded container log driver is not a host requirement.** `compose.yaml`
   sets `logging:` on every service itself — Docker's `local` driver, bounded by
   `LOG_MAX_SIZE` and `LOG_MAX_FILES` in `.env` — so the stack does not depend on
@@ -128,8 +124,8 @@ answers `denied` and needs a token — which defeats the point of there being no
 registry login in these instructions. The workflow cannot do it; a person with
 access to the organization's packages must.
 
-**For 0.1 there is nothing to do: all eight are public.** Read without any
-credentials on 2026-09-08, at `0` and at `0.1.0`:
+**There is nothing to do: all eight are public.** Read without any credentials
+at `0.2` on 2026-09-21:
 
 | | |
 |---|---|
@@ -171,6 +167,10 @@ docker compose -p algojudge-staging up -d --wait
 and pass `-p` to every later command, including the scripts. Better still, put
 `COMPOSE_PROJECT_NAME=` in the `.env` beside it, so nobody has to remember.
 
+The Runners' cache and scratch volumes carry the project name, and so do the
+two values each Runner is given for them, so a second installation reaches its
+own and not the first one's.
+
 ## 1. Clone and configure
 
 ```bash
@@ -200,9 +200,9 @@ AJ_ADMIN_TOKEN=          # openssl rand -base64 36
 POSTGRES_PASSWORD=       # openssl rand -base64 36, a different one
 ```
 
-**There is no third.** `RUNNER_WORK_DIR` was one until 2026-09-16, when the
-Runners' cache and scratch became Docker volumes: there is no host path to
-choose anymore, and nothing to create or permission before the first start.
+**There is no third.** The Runners' cache and scratch are Docker volumes, so
+there is no host path to choose and nothing to create or permission before the
+first start.
 
 ## Where the Runners keep their bytes
 
@@ -224,60 +224,12 @@ the database, and the next submission of every package downloads and builds
 again. That is minutes of a participant's time rather than data loss, but it is
 not nothing on a contest morning.
 
-### If your daemon is older than Engine 26
+### What the daemon has to be able to do
 
-The package a judge's container mounts is a **subdirectory** of the shared cache
-volume, and mounting one needs `subpath`: Docker Engine 26 / API 1.45 (April
-2024), or Podman 5. Below either, the Runner refuses to judge, and
-`preflight.sh` says so before you find out from a submission.
-
-That installation keeps the host directories instead, which is the arrangement
-this stack shipped until 2026-09-16 and is supported, not deprecated:
-
-```bash
-cp compose.directories.yaml compose.override.yaml
-```
-
-Then set `RUNNER_WORK_DIR` in `.env` — **an absolute host path**, because the
-Runner hands it to the Docker daemon and **a path the daemon cannot open
-becomes an empty directory rather than an error**, so every submission would
-run against nothing with no test failing visibly. `RUNNER_CACHE_DIR` has a
-working default; keep it **out of** `RUNNER_WORK_DIR`, whose first-level
-directories the scheduled cleanup removes by age. `preflight.sh` checks all
-three and says which one is wrong.
-
-```bash
-sudo mkdir -p /srv/algojudge/runner-work
-```
-
-Making it yourself is optional: Compose creates a missing bind-mount source as
-**root, mode 0755**, which is what this needs. What breaks it is a directory
-locked down by hand — jobs then fail with `Permission denied (os error 13)`
-from inside the sandbox layer. `preflight.sh` probes both halves, writing as
-root and reading back as 65534, and says which one failed.
-
-**If you set `COMPOSE_FILE`, name `compose.override.yaml` in it.** Compose reads
-that file by itself only while `COMPOSE_FILE` is unset, and dropping it would
-start the Runners on empty volumes instead of these directories.
-
-*`chown 65532:65532` also works and costs nothing; the Runner runs as root, so
-it is not needed.*
-
-Two more worth reading before the first start:
-
-- **`TRUSTED_PROXY_NETWORKS`** decides whose word the Server takes for a
-  visitor's address. It defaults to the Compose network the bundled nginx sits
-  on, and must be a **network** address: `172.28.0.5/24` is refused at startup,
-  by name, with the address it should have been.
-- **`DOCKER_GID`** is the group that owns the daemon's socket. The Runner runs
-  as root and reaches the socket whatever groups it is in, so a wrong value no
-  longer stops anything and `preflight.sh` only warns about it. `preflight.sh` reads the
-  real number and tells you if yours is wrong — on Docker Desktop the socket is
-  `root:root`, so it is `0`; on a Linux host it is the `docker` group's id:
-
-  ```bash
-  getent group docker | cut -d: -f3
-  ```
+The package a judge's container mounts is a **subdirectory** of the shared
+cache volume, and mounting one needs `subpath`: **Docker Engine 26 / API 1.45**
+(April 2024), or Podman 5. Below either, the Runner refuses to judge, and
+`preflight.sh` refuses before you find out from a submission.
 
 ## 2. A certificate
 
@@ -368,12 +320,13 @@ submissions are judged at once. **`RUNNER_TESTS_AT_ONCE` is how many of that
 submission's tests it judges together**, each in a **lane** — a piece of the
 Runner's `cpuset` with a measurement home of its own — so a participant waits
 for the slowest of the tests running together rather than for the sum of them.
-The two settings spend the same processors: two Runners of four lanes answer one
-submission sooner, four Runners of one lane answer four submissions at once.
+The two settings spend the same processors: a wider Runner answers one
+submission sooner, a narrower one leaves room for the other Runner to answer a
+second.
 
-**`runner` starts `runner-1` and `runner-2`; `runner-3` and `runner-4` are
-behind `runner-extra`.** Add that profile to `COMPOSE_PROFILES` and give the two
-of them cpusets of their own, on a host with the processors to spare.
+**`runner` starts `runner-1` and `runner-2`, and that is the whole fleet.** A
+host with capacity to spare widens them with `RUNNER_TESTS_AT_ONCE` rather than
+gaining a third.
 
 **The rule for dividing a machine is one Runner per group of processors, and one
 lane per processor in the group.** A lane wants a processor of its own, and the
@@ -408,11 +361,13 @@ Runners of one lane and three Runners of four are the same twelve judged runs.
 
 So the ceiling is a rule about correctness, and what it counts is the lanes:
 
-| Physical cores | Runners | `RUNNER_TESTS_AT_ONCE` |
-|---|---|---|
-| 4 | 1 | 4 |
-| 8 | **2** | **4** |
-| 16 | 4, with `runner-extra` | 4 |
+| Physical cores | `RUNNER_TESTS_AT_ONCE` |
+|---|---|
+| 4 | 2 |
+| 8 | **2** |
+| 16 | 8 |
+
+Two Runners throughout, each taking half the machine.
 
 `lscpu` says how many processors there are, and *Core(s) per socket* times
 *Socket(s)* how many physical cores — which is **not** the CPU count when a core
@@ -464,8 +419,8 @@ two in how fast a contest is judged, and the difference is in the problems.
 timeout; nothing is judged until an administrator approves it, which is what
 stops somebody from attaching a machine of their own to your installation.
 
-In the panel: **Runners**, and approve each of the two that appeared — four,
-with `runner-extra`. Their logs say `waiting: this Runner has not been approved
+In the panel: **Runners**, and approve each of the two that appeared. Their
+logs say `waiting: this Runner has not been approved
 yet` until you do, and an unapproved Runner is simply idle — the others carry
 the queue, so a forgotten approval shows up as a slow installation rather than
 as an error.
@@ -568,14 +523,12 @@ RUNNER_TESTS_AT_ONCE=2
 **Each Runner host needs Docker Engine 26 or later**, and its own disk where
 Docker keeps volumes — the Runners' cache and scratch are volumes on the
 machine that judges, not on the application host. A lab machine below that
-engine keeps the host directories: see
-[Where the Runners keep their bytes](#where-the-runners-keep-their-bytes).
+engine cannot run Runners at all; `preflight.sh` refuses there.
 
-**The profile starts two Runners**, named `lab-a-1` and `lab-a-2` here;
-`runner-extra` adds `lab-a-3` and `lab-a-4` on a host with the processors for
-them. The prefix has to differ per host, or two machines' Runners appear in the
-panel under one set of names. On a host with fewer physical cores, run narrower
-or fewer: see *How many Runners, and how wide* above.
+**The profile starts two Runners**, named `lab-a-1` and `lab-a-2` here. The
+prefix has to differ per host, or two machines' Runners appear in the panel
+under one set of names. On a host with fewer physical cores, run narrower: see
+*How many Runners, and how wide* above.
 
 The Runner opens every connection itself — it needs no inbound port and works
 from behind a home router. Each one registers separately and needs its own
@@ -694,11 +647,8 @@ COMPOSE_FILE="compose.yaml:compose.override.yaml:state/lti.compose.yaml"
 ```
 
 Compose reads `compose.override.yaml` by itself **only while `COMPOSE_FILE` is
-unset**. Setting it silently drops that file, and if yours is the copy of
-`compose.directories.yaml` described under
-[Where the Runners keep their bytes](#where-the-runners-keep-their-bytes), the
-Runners would come up on empty volumes rather than on the directories holding
-every package they have downloaded and built.
+unset**. Setting it silently drops that file, so an installation with an overlay
+of its own has to name it here too.
 
 **And the frame header has to go**, if your LMS is on a different name from this
 installation. `X-Frame-Options: SAMEORIGIN` — which `nginx/snippets/security-headers.conf`

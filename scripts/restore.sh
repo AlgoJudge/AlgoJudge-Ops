@@ -66,17 +66,28 @@ fi
 # `MIGRATE_ON_START=true` the Server brings the restored schema forward on its
 # next start and there is no going back down, so this warns rather than refuses.
 
+# **Both chains, because they migrate separately.** Comparing only the
+# application schema says nothing, silently, about a release that moved the LTI
+# one — which `backup.sh` has been recording all along.
+
 if [ -f "$meta" ]; then
-    was=$(grep -m1 '^schema=' "$meta" | cut -d= -f2 || true)
-    now=$(psql_scalar "SELECT string_agg(\"MigrationId\", ',' ORDER BY \"MigrationId\") FROM \"__EFMigrationsHistory\"" | tr -d '[:space:]' || true)
-    if [ -n "$was" ] && [ -n "$now" ] && [ "$was" != "$now" ]; then
-        warn "the dump holds a different schema from the running installation.
+    for chain in application lti; do
+        case "$chain" in
+            application) key=schema;     table=__EFMigrationsHistory;     which="schema" ;;
+            lti)         key=schema_lti; table=__EFMigrationsHistory_Lti; which="LTI schema" ;;
+        esac
+
+        was=$(grep -m1 "^$key=" "$meta" | cut -d= -f2 || true)
+        now=$(psql_scalar "SELECT string_agg(\"MigrationId\", ',' ORDER BY \"MigrationId\") FROM \"$table\"" | tr -d '[:space:]' || true)
+        if [ -n "$was" ] && [ -n "$now" ] && [ "$was" != "$now" ]; then
+            warn "the dump holds a different $which from the running installation.
        dump:    $was
        running: $now
        With MIGRATE_ON_START=$(setting MIGRATE_ON_START true) the Server will migrate the restored
        database forward when it starts. That is one-way. If you meant to go back
        to an older Server as well, set SERVER_TAG to its version first."
-    fi
+        fi
+    done
 fi
 
 if $confirm; then

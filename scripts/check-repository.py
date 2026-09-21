@@ -105,13 +105,8 @@ def no_secret_committed(problems):
 
 
 def env_example_and_compose_agree(problems):
-    """Every variable compose expands appears in `.env.example`, and back.
-
-    **Both files.** `compose.directories.yaml` is an overlay an installation
-    copies over `compose.override.yaml`, and a variable only it expands is
-    still a variable an operator sets.
-    """
-    compose = read("compose.yaml") + read("compose.directories.yaml")
+    """Every variable compose expands appears in `.env.example`, and back."""
+    compose = read("compose.yaml")
     example = read(".env.example")
 
     # `${NAME}`, `${NAME:-default}`, `${NAME:?message}`. Not the `AJ_`-prefixed
@@ -149,12 +144,7 @@ def env_example_and_compose_agree(problems):
 
 
 def secrets_have_no_defaults(problems):
-    """The two that must not start with a working value, do not have one.
-
-    `RUNNER_WORK_DIR` was a third until 2026-09-16, when the Runners' scratch
-    became a Docker volume by default: empty is the working answer now rather
-    than an unmade decision, and it is set only with `compose.directories.yaml`.
-    """
+    """The two that must not start with a working value, do not have one."""
     example = read(".env.example")
     for name in ("AJ_ADMIN_TOKEN", "POSTGRES_PASSWORD"):
         match = re.search(rf"^{name}=(.*)$", example, re.MULTILINE)
@@ -268,6 +258,65 @@ def the_language_images_have_one_spelling(problems):
             problems.append(
                 f"compose.yaml sets AJ_Sandbox__Image__{key}, which "
                 "scripts/lib/images.sh does not fetch."
+            )
+
+
+def the_runner_volume_names_are_the_daemons(problems):
+    """Every `AJ_*__Volume` names a volume the way the daemon holds it.
+
+    **A Runner is handed a name to ask the daemon about, not a Compose key to
+    resolve.** Compose creates the key `runner-cache` as
+    `<project>_runner-cache`; the Runner passes what it was given to
+    `docker volume inspect` and exits when there is no such volume — before it
+    registers, and with `restart: unless-stopped` making it a loop that
+    `up -d --wait` does not notice, because a Runner has no health check.
+
+    The prefix must be the same expansion on both sides so they move together.
+    """
+    compose = read("compose.yaml")
+
+    project = re.search(r"^name:[ \t]*(\S+)[ \t]*$", compose, re.MULTILINE)
+    if not project:
+        problems.append(
+            "compose.yaml has no top-level `name:`, so the volume names the "
+            "Runners are given cannot be checked against the project name."
+        )
+        return
+
+    parts = compose.split("\nvolumes:\n", 1)
+    if len(parts) != 2:
+        problems.append(
+            "compose.yaml has no top-level `volumes:` block, so the volume names "
+            "the Runners are given cannot be checked against what is declared."
+        )
+        return
+    declared = set(re.findall(r"^  ([a-z0-9][a-z0-9-]*):", parts[1], re.MULTILINE))
+
+    wanted = r"^\$\{COMPOSE_PROJECT_NAME:-%s\}_(.+)$" % re.escape(project.group(1))
+    found = re.findall(
+        r"^[ \t]+(AJ_(?:Cache|Work)__Volume):[ \t]*(\S+)[ \t]*$", compose, re.MULTILINE
+    )
+    if not found:
+        problems.append(
+            "compose.yaml sets no AJ_Cache__Volume or AJ_Work__Volume. Either the "
+            "Runners lost their volume roots, or this check has stopped finding them."
+        )
+        return
+
+    for key, value in found:
+        named = re.match(wanted, value)
+        if not named:
+            problems.append(
+                f"compose.yaml sets {key} to {value!r}, which does not begin with "
+                "${COMPOSE_PROJECT_NAME:-%s}_. Compose prefixes a volume with the "
+                "project name and the Runner asks the daemon for what it was "
+                "given, so the two would name different volumes."
+                % project.group(1)
+            )
+        elif named.group(1) not in declared:
+            problems.append(
+                f"compose.yaml sets {key} to {value!r}, and {named.group(1)!r} is "
+                "not declared in the top-level volumes block."
             )
 
 
@@ -425,6 +474,7 @@ CHECKS = (
     one_postgres_major,
     the_product_tags_agree,
     the_language_images_have_one_spelling,
+    the_runner_volume_names_are_the_daemons,
     the_stack_is_supplied_before_it_starts,
     the_volume_is_above_pgdata,
     the_api_is_not_intercepted,

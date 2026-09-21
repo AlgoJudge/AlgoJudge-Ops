@@ -89,17 +89,14 @@ In order of how often it is each one:
    volume the Runners share and each judged container mounts its subdirectory
    out of there, which needs `subpath` — Engine 26 / API 1.45 (April 2024),
    or Podman 5. The Runner **refuses to judge** and says so rather than judging
-   against nothing. `./scripts/preflight.sh` reports it before a submission
+   against nothing. `./scripts/preflight.sh` refuses it before a submission
    does, and `docker version --format '{{.Server.APIVersion}}'` is the number.
-   Either update the daemon, or keep the host directories:
-   `cp compose.directories.yaml compose.override.yaml`, then set
-   `RUNNER_WORK_DIR` in `.env`.
-4. **`RUNNER_WORK_DIR` is wrong**, and only with that overlay in place. This is
-   the nastiest one, because it fails *silently*: the Docker daemon is handed
-   this path directly, and a path it cannot open produces an **empty
-   directory** rather than an error. Every job then runs against nothing. It
-   must be **absolute**, and it must be a path the daemon — not just your
-   shell — can open.
+   Update the daemon.
+4. **The cache volume is not the one the Runner was told about.** Each Runner
+   is handed a volume name to ask the daemon for and exits at start when there
+   is no such volume, so this is a Runner that never registers rather than one
+   judging badly. The two commands under *A checker fails on every submission*
+   below print what it was given and what the daemon holds.
 5. **Tags.** A Runner with `RUNNER_TAGS` set is out of the general pool, and work
    with no tags goes to the general pool. Empty means `default` on both sides.
    Note that **tags are read once, at the first registration** — changing the
@@ -186,24 +183,17 @@ reaches it by name, which leaves nothing to get wrong; this entry is then
 almost always the Runner having been pointed somewhere else by hand. Check what
 it was actually given:
 
+**Both Runner images are distroless**, so `docker compose exec` has no `env`
+and no shell to run it with. Read the container from outside instead:
+
 ```bash
-docker compose exec runner-1 env | grep AJ_Cache__
+docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$(docker compose ps -q runner-1)" | grep AJ_Cache__
 docker volume inspect algojudge_runner-cache
 ```
 
-**With the directories overlay** it is a host path, and a path the daemon
-cannot open is the ordinary cause. It has to exist on the host and be readable
-by uid 65534, which is what `scripts/preflight.sh` probes:
-
-```bash
-sudo mkdir -p /srv/algojudge/runner-cache
-sudo chmod 755 /srv/algojudge/runner-cache
-./scripts/preflight.sh
-```
-
-A Runner started against a cache it cannot see refuses to judge at all and says
-so, naming `AJ_Cache__HostPath` or `AJ_Cache__Volume`, so the case above is the
-narrower one: a cache that exists but is not the one the Runner is writing to.
+A Runner started against a cache it cannot see refuses to **start** and says so,
+naming `AJ_Cache__Volume`, so the case above is the narrower one: a cache that
+exists but is not the one the Runner is writing to.
 
 ## Nothing **external** is being judged
 
@@ -260,7 +250,7 @@ through exactly as written, deliberately — trimming it broke a sign-in once.
 
 The same loop as above, from a different cause: a Runner checks its intervals
 against one another before it does anything, and `restart: unless-stopped` turns
-a refusal into a restart every few seconds. Three of these are worth knowing,
+a refusal into a restart every few seconds. Two of these are worth knowing,
 and **none of them can be reached with the values this stack ships** — they are
 what a `.env` of your own can produce.
 
@@ -285,15 +275,14 @@ docker compose logs external-runner | tail -5
   connected and be handed nothing. Leave the variable unset for the default.
   This one is the sandboxing Runner's only: on the external Runner an empty
   value deliberately means the judge's own type.
-- **`… make a cycle of N seconds, which does not fit four times inside
-  AJ_Lease__RequestSeconds.`** The external Runner renews the leases it holds
-  once per cycle, and a cycle is the judge's own interval **plus** the claim the
-  Server holds open. A lease that could expire between two renewals is one the
-  Server reclaims while a submission is still live at the archive, and the next
-  Runner sends it again. Lower either interval, or raise the lease.
+The external Runner holds its leases on a timer of its own — a quarter of the
+lease the Server granted — so how often it asks the archive says nothing about
+whether a lease expires. What it still refuses at start is a lease that does not
+outlast `AJ_External__PendingTimeoutSeconds`, a lease above the Server's ceiling
+of 3600, and `AJ_Poll__WaitSeconds` above 300.
 
-This stack does not offer the four external intervals in `.env.example` for
-exactly this reason; the image's defaults satisfy all of it.
+This stack does not offer the four external intervals in `.env.example`; the
+image's defaults suit an installation that is one account at the archive.
 
 ## A Runner refuses to start and names `AJ_Runner__TestsAtOnce`
 
@@ -314,9 +303,9 @@ passes `RUNNER_TESTS_AT_ONCE` to all four services — so one narrow
 
 **A Runner with no cpuset reads the whole machine**, which is how this reaches a
 host nobody thought of as small: a width of four on a machine with two
-processors is refused whether the set is narrow or absent, and `runner-3` and
-`runner-4` ship unpinned. `0-3`, `4-7` and a width of four satisfy it on a
-machine with eight processors; a smaller host needs both changed.
+processors is refused whether the set is narrow or absent, and both cpusets
+ship empty. `0-3`, `4-7` and a width of four satisfy it on a machine with eight
+processors; a smaller host needs both changed.
 
 It refuses rather than judging slowly because **a time limit is processor
 time**. Two judged runs sharing one processor spend more of it on the same work,
@@ -362,12 +351,12 @@ The runner service runs as root, which opens the socket whatever groups it is
 in, so this is only a cause where `compose.yaml` has been edited to drop that.
 Where it is, the Runner fails at **startup** and never reaches a job.
 
-**Two: `RUNNER_WORK_DIR` cannot be read by a job container**, which is a cause
-only with the directories overlay — a volume is created root-owned and mode
-0755 by the daemon, and that is already right. The Runner writes a submission's
-files there as root; every job container mounts the directory **read-only** and
-reads it as uid **65534**. A directory locked down by hand passes for the
-Runner and fails for the job, so the socket works perfectly, the Runner
+**Two: the scratch cannot be read by a job container**, which the volumes make
+unlikely — the daemon creates one root-owned and mode 0755, which is already
+right. The Runner writes a submission's files there as root; every job container
+mounts the directory **read-only** and reads it as uid **65534**. A volume
+replaced by hand can fail that second half, so the socket works perfectly, the
+Runner
 registers, claims a job — and every single one fails at once, which is how to
 tell the two apart.
 

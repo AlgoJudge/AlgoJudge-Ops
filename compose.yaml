@@ -87,7 +87,7 @@ services:
 
   server:
     profiles: ["app", "server"]
-    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-server:${SERVER_TAG:-0}
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-server:${SERVER_TAG:-0.2}
     logging: *logging
 
     # **Long enough to answer the claims it is holding.** Since 2026-09-04 a
@@ -140,7 +140,15 @@ services:
       # trusting only loopback records the proxy. This names the network nginx
       # reaches the Server from, which is why `edge` has a fixed subnet below.
       # Behind somebody else's proxy (T3), set it to theirs.
-      AJ_Forwarded__KnownNetworks: ${TRUSTED_PROXY_NETWORKS:-172.28.0.0/24}
+      #
+      # **The default applies to an absent value, not an empty one**, so
+      # emptying this empties the list.
+      AJ_Forwarded__KnownNetworks: ${TRUSTED_PROXY_NETWORKS-172.28.0.0/24}
+
+      # Addresses rather than networks, and the one place `none` belongs: here
+      # it switches the forwarded headers off, in the list above it is read as
+      # a CIDR block and refused at startup.
+      AJ_Forwarded__KnownProxies: ${TRUSTED_PROXY_PROXIES-}
 
       # Where a **browser** reaches the application. Empty is right on one
       # origin; on two, a federated sign-in ends at a bare `/activities`
@@ -169,6 +177,24 @@ services:
       # mounted below. Absent means the panel is the only way to configure this
       # installation. See `docs/INSTALL.md`.
       AJ_Preconfiguration__Path: /etc/algojudge/preconfig
+
+      # **The rest of the Server's settings.** Unlike the Runners', an empty
+      # value here is not an absent one -- .NET binds it -- so each numeric
+      # default is written out and matches the image's own.
+      AJ_Maintenance__ForceAfterSeconds: ${MAINTENANCE_FORCE_AFTER:-300}
+      AJ_Limits__MaxRequestBytes: ${MAX_REQUEST_BYTES:-134217728}
+      AJ_Retention__SessionOriginDays: ${RETENTION_SESSION_ORIGIN_DAYS:-30}
+      AJ_Retention__SubmissionOriginDays: ${RETENTION_SUBMISSION_ORIGIN_DAYS:-365}
+      AJ_Events__SendTimeoutSeconds: ${EVENTS_SEND_TIMEOUT:-5}
+      AJ_Files__CollectAtHourUtc: ${FILES_COLLECT_AT_HOUR_UTC:-6}
+      AJ_Storage__Migration__StartHourUtc: ${STORAGE_MIGRATION_START_HOUR_UTC:-2}
+      AJ_Storage__Migration__BudgetMinutes: ${STORAGE_MIGRATION_BUDGET_MINUTES:-30}
+      AJ_Storage__Migration__GraceMinutes: ${STORAGE_MIGRATION_GRACE_MINUTES:-60}
+
+      # Strings, where empty is read as unset.
+      AJ_Storage__SpoolPath: ${STORAGE_SPOOL_PATH-}
+      AJ_DataProtection__Kind: ${DATA_PROTECTION_KIND-}
+      AJ_UvaExplorer__Origin: ${UVA_EXPLORER_ORIGIN-}
 
     volumes:
       # Optional, and `:ro`. The directory exists in this repository so the mount
@@ -201,7 +227,7 @@ services:
 
   client:
     profiles: ["app", "client"]
-    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-client:${CLIENT_TAG:-0}
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-client:${CLIENT_TAG:-0.2}
     logging: *logging
     restart: unless-stopped
 
@@ -271,7 +297,7 @@ services:
 
   runner-1: &runner
     profiles: ["runner"]
-    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-runner:${RUNNER_TAG:-0}
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-runner:${RUNNER_TAG:-0.2}
     logging: *logging
     restart: unless-stopped
 
@@ -306,10 +332,10 @@ services:
       # the Runner looks for `algojudge/lang-*:local` — images the development
       # flow builds and a fresh host has never heard of. A submission then fails
       # to be judged with nothing obviously wrong.
-      AJ_Sandbox__Image__Gcc: ${REGISTRY:-ghcr.io/algojudge}/lang-gcc:${RUNNER_TAG:-0}
-      AJ_Sandbox__Image__Clang: ${REGISTRY:-ghcr.io/algojudge}/lang-clang:${RUNNER_TAG:-0}
-      AJ_Sandbox__Image__Python: ${REGISTRY:-ghcr.io/algojudge}/lang-python:${RUNNER_TAG:-0}
-      AJ_Sandbox__Image__Pypy: ${REGISTRY:-ghcr.io/algojudge}/lang-pypy:${RUNNER_TAG:-0}
+      AJ_Sandbox__Image__Gcc: ${REGISTRY:-ghcr.io/algojudge}/lang-gcc:${RUNNER_TAG:-0.2}
+      AJ_Sandbox__Image__Clang: ${REGISTRY:-ghcr.io/algojudge}/lang-clang:${RUNNER_TAG:-0.2}
+      AJ_Sandbox__Image__Python: ${REGISTRY:-ghcr.io/algojudge}/lang-python:${RUNNER_TAG:-0.2}
+      AJ_Sandbox__Image__Pypy: ${REGISTRY:-ghcr.io/algojudge}/lang-pypy:${RUNNER_TAG:-0.2}
 
       AJ_Work__Path: /var/lib/algojudge-runner/work
 
@@ -318,17 +344,38 @@ services:
       # is emptied by whoever claims the job — so two Runners sharing this would
       # delete each other's work in progress. Named here rather than as a path
       # for the same reason as the cache above: one spelling instead of two.
-      AJ_Work__Volume: runner-1-work
+      #
+      # **With the project name**, because Compose creates the key below as
+      # `<project>_runner-1-work` and the Runner asks the daemon for a name.
+      AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-1-work
 
       # **The cache, by the name the daemon knows it by.** A package is unpacked
       # and the checker it declares is built once, in the cache, and both are
       # mounted read-only into the container that judges with them — so the
       # daemon has to be able to reach it. Named, it is reached by name and the
       # package travels as `subpath`, which is why there is no second spelling
-      # of this directory to keep in step with the mount below. The Runner still
-      # checks at start, against a throwaway container, and refuses to judge if
-      # it cannot see what it wrote.
-      AJ_Cache__Volume: runner-cache
+      # of this directory to keep in step with the mount below. The Runner
+      # probes it at start and refuses to start if the daemon cannot open it.
+      #
+      # **With the project name**, as the scratch above.
+      AJ_Cache__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-cache
+
+      # **The rest of the Runner's settings, and empty is the image's own
+      # default for every one of them.** The Runner treats an empty value as an
+      # absent one, so a line left commented in `.env` changes nothing.
+      AJ_Cache__MaxBytes: ${RUNNER_CACHE_MAX_BYTES-}
+      AJ_Lease__RequestSeconds: ${RUNNER_LEASE_SECONDS-}
+      AJ_Heartbeat__Seconds: ${RUNNER_HEARTBEAT_SECONDS-}
+      AJ_Poll__MinSeconds: ${RUNNER_POLL_MIN_SECONDS-}
+      AJ_Poll__MaxSeconds: ${RUNNER_POLL_MAX_SECONDS-}
+      AJ_Poll__WaitSeconds: ${RUNNER_POLL_WAIT_SECONDS-}
+      AJ_Runner__KeyPath: ${RUNNER_KEY_PATH-}
+      AJ_Sandbox__CgroupRoot: ${RUNNER_CGROUP_ROOT-}
+
+      # **Two that let a Runner judge without measuring**, which is wrong
+      # verdicts rather than an outage. Left to the image, both are off.
+      AJ_Sandbox__AllowCgroupV1: ${RUNNER_ALLOW_CGROUP_V1-}
+      AJ_Sandbox__AllowUnmeasured: ${RUNNER_ALLOW_UNMEASURED-}
 
       RUST_LOG: ${RUNNER_LOG:-info}
 
@@ -340,14 +387,9 @@ services:
       # package it has downloaded with what was unpacked and built from it. One
       # preparation is shared between all four, under a lock.
       #
-      # **It was a host directory until 2026-09-16, and the reason it could not
-      # be a volume was real.** A judge's container mounts the unpacked package
-      # out of here, and the daemon could not open a volume *by path* — so the
-      # cache had to be a directory both this Runner and the daemon could name.
-      # A volume's subdirectory travels as `subpath` now, which needs Engine 26
-      # / API 1.45 (April 2024) and, on Podman, 5.x. An installation below
-      # either keeps the directories: see `compose.directories.yaml`, which is
-      # that arrangement unchanged.
+      # **A judge's container mounts the unpacked package out of here**, as a
+      # volume `subpath` -- which needs Engine 26 / API 1.45 (April 2024) or
+      # Podman 5. `scripts/preflight.sh` refuses a daemon below that.
       - runner-cache:/var/cache/algojudge-runner
       - runner-1-work:/var/lib/algojudge-runner/work
       # The Runner starts **sibling** containers through the daemon. Job
@@ -457,17 +499,17 @@ services:
   # processors on one submission at a time instead of four, which is the trade
   # being made: fewer submissions judged at once, each answered sooner.
   #
-  # **`runner-3` and `runner-4` are behind the `runner-extra` profile**, for a
-  # host with more processors, or for an installation that would rather judge
-  # four submissions at once than one submission four ways. Add `runner-extra`
-  # to `COMPOSE_PROFILES` and give them cpusets of their own. More Runners than
-  # physical cores does not judge faster and does stop judging accurately.
+  # **Two Runners, and the fleet is fixed at two.** More Runners than physical
+  # cores does not judge faster and does stop judging accurately: every lane
+  # wants a core, and two of two is what eight processors of four cores give.
+  # A host with more capacity raises `RUNNER_TESTS_AT_ONCE`, which answers one
+  # submission sooner, rather than adding a Runner that answers another.
   runner-2:
     <<: *runner
     environment:
       <<: *runner-env
       AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-2
-      AJ_Work__Volume: runner-2-work
+      AJ_Work__Volume: ${COMPOSE_PROJECT_NAME:-algojudge}_runner-2-work
     volumes:
       - runner-2-identity:/var/lib/algojudge-runner
       - runner-cache:/var/cache/algojudge-runner
@@ -475,36 +517,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup
     cpuset: ${RUNNER_2_CPUSET:-}
-
-  runner-3:
-    <<: *runner
-    profiles: ["runner-extra"]
-    environment:
-      <<: *runner-env
-      AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-3
-      AJ_Work__Volume: runner-3-work
-    volumes:
-      - runner-3-identity:/var/lib/algojudge-runner
-      - runner-cache:/var/cache/algojudge-runner
-      - runner-3-work:/var/lib/algojudge-runner/work
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /sys/fs/cgroup:/sys/fs/cgroup
-    cpuset: ${RUNNER_3_CPUSET:-}
-
-  runner-4:
-    <<: *runner
-    profiles: ["runner-extra"]
-    environment:
-      <<: *runner-env
-      AJ_Runner__Name: ${RUNNER_NAME_PREFIX:-runner}-4
-      AJ_Work__Volume: runner-4-work
-    volumes:
-      - runner-4-identity:/var/lib/algojudge-runner
-      - runner-cache:/var/cache/algojudge-runner
-      - runner-4-work:/var/lib/algojudge-runner/work
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /sys/fs/cgroup:/sys/fs/cgroup
-    cpuset: ${RUNNER_4_CPUSET:-}
 
   # ── The External Runner ─────────────────────────────────────────────────────
   #
@@ -515,7 +527,7 @@ services:
 
   external-runner:
     profiles: ["external-runner"]
-    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-external-runner:${EXTERNAL_RUNNER_TAG:-0}
+    image: ${REGISTRY:-ghcr.io/algojudge}/algojudge-external-runner:${EXTERNAL_RUNNER_TAG:-0.2}
     logging: *logging
     restart: unless-stopped
 
@@ -548,15 +560,32 @@ services:
 
       RUST_LOG: ${EXTERNAL_RUNNER_LOG:-info}
 
-      # The lease, the four poll intervals **and `AJ_Poll__WaitSeconds`** check
-      # one another at startup, and the image's defaults satisfy all of it, so
-      # they are not offered here. Moving them costs a solution submitted to the
-      # archive twice.
-      #
-      # The wait is in that arithmetic since 2026-09-04: a lease is renewed once
-      # per loop and the claim the Server holds open is inside the same loop, so
-      # the cycle is the judge's interval *plus* the wait. A value accepted
-      # before that day can be refused now.
+      # **What this Runner costs the archive.** The gap between two
+      # submissions is the politeness setting; the pool is a ceiling, not a
+      # rate. Empty is the image's own default for each.
+      AJ_External__SubmitMinIntervalSeconds: ${EXTERNAL_SUBMIT_MIN_INTERVAL-}
+      AJ_External__MaxPending: ${EXTERNAL_MAX_PENDING-}
+      AJ_External__PendingTimeoutSeconds: ${EXTERNAL_PENDING_TIMEOUT-}
+
+      # The rest, each empty meaning the image's default.
+      AJ_External__PollMinSeconds: ${EXTERNAL_POLL_MIN_SECONDS-}
+      AJ_External__PollMaxSeconds: ${EXTERNAL_POLL_MAX_SECONDS-}
+      AJ_External__PollEscalateAfterSeconds: ${EXTERNAL_POLL_ESCALATE_AFTER-}
+      AJ_External__LongPollEnabled: ${EXTERNAL_LONG_POLL-}
+      AJ_External__BaseUrl: ${EXTERNAL_JUDGE_BASE_URL-}
+      AJ_External__ApiBaseUrl: ${EXTERNAL_JUDGE_API_BASE_URL-}
+      AJ_External__UserId: ${EXTERNAL_JUDGE_USER_ID-}
+      AJ_Cache__MaxBytes: ${EXTERNAL_CACHE_MAX_BYTES-}
+      AJ_Lease__RequestSeconds: ${EXTERNAL_LEASE_SECONDS-}
+      AJ_Poll__MinSeconds: ${EXTERNAL_SERVER_POLL_MIN_SECONDS-}
+      AJ_Poll__MaxSeconds: ${EXTERNAL_SERVER_POLL_MAX_SECONDS-}
+      AJ_Poll__WaitSeconds: ${EXTERNAL_SERVER_POLL_WAIT_SECONDS-}
+
+      # **The four poll intervals are not offered here**; the image's defaults
+      # suit one account at the archive. Leases are renewed on a timer of their
+      # own, a quarter of the granted lease, so polling less often does not hold
+      # one longer. What the archive feels is
+      # `AJ_External__SubmitMinIntervalSeconds`, set in an overlay.
 
     volumes:
       # The identity key. Losing it costs a re-registration and an approval.
@@ -607,8 +636,6 @@ volumes:
   objects:                   # unread under STORAGE_KIND=postgres
   runner-1-identity:
   runner-2-identity:
-  runner-3-identity:
-  runner-4-identity:
   # **What the four share**: one download, one unpacking, one built judge, under
   # a lock. Bounded at 10 GiB by the Runner itself, from inside.
   runner-cache:
@@ -617,7 +644,5 @@ volumes:
   # working -- so one between two Runners is one deleting the other's work.
   runner-1-work:
   runner-2-work:
-  runner-3-work:
-  runner-4-work:
   external-runner-identity:
   external-runner-cache:     # 256 MiB, bounded by the image

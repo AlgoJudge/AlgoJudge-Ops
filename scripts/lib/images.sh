@@ -17,7 +17,7 @@
 LANGS="gcc clang python pypy"
 
 # The reference, exactly as `compose.yaml` builds it for the Runner.
-lang_image() { printf '%s/lang-%s:%s\n' "${REGISTRY:-ghcr.io/algojudge}" "$1" "${RUNNER_TAG:-0}"; }
+lang_image() { printf '%s/lang-%s:%s\n' "${REGISTRY:-ghcr.io/algojudge}" "$1" "${RUNNER_TAG:-0.2}"; }
 
 # The `AJ_Sandbox__Image__*` suffix each one is handed to the Runner under.
 lang_key() {

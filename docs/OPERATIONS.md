@@ -33,8 +33,9 @@ during a window loses it and every job in it is sent again.
 
 **Stopping it politely does not avoid that, and is still worth doing.** On
 `SIGTERM` it hands every job it is holding back to the queue at once, so the
-resend starts immediately rather than after each lease expires — up to twenty
-participants who would otherwise wait ten minutes for a Runner that is already
+resend starts immediately rather than after each lease expires — as many
+participants as `AJ_External__MaxPending` allows to be outstanding, a hundred by
+default, who would otherwise wait out the lease for a Runner that is already
 gone. The duplicate on the archive is unchanged: the answer that was coming has
 nowhere to land either way.
 
@@ -306,41 +307,50 @@ over `SERVER_URL`. Those hosts have their own `update.sh`, and a host that is no
 updated in step goes quiet on its **next restart** rather than immediately —
 which is the shape of failure nobody notices until a contest.
 
-**Versions are tags in `.env` and digests in `state/current.lock`.** The tag says
-what was asked for; the digest says what is running, and is what a rollback
-restores. Digests cannot live in this repository — it is a product many
-organizations deploy independently, and none of them can commit to it.
+**Versions are tags in `.env` and digests in two lock files.** The tag says what
+was asked for; the digests say what images those resolved to.
+`state/current.lock` is written once an update is healthy and names what is
+running. `state/previous.lock` is written immediately before the swap and names
+what was replaced, which is what a rollback restores. Digests cannot live in
+this repository — it is a product many organizations deploy independently, and
+none of them can commit to it.
 
-### Updating past 2026-09-16, when the Runners moved into volumes
+### Coming from the 0.1 line
 
-An installation that was running before that day keeps its cache and scratch in
-host directories, and the update switches it to volumes. Three things follow,
-and none of them loses anything a participant can see:
+**0.2 is not compatible with 0.1, and this stack is the 0.2 line.** The four
+product tags are `0.2`, so an installation does not cross a minor by pulling;
+it crosses by being moved to a new release of this repository, which is where
+the upgrade a minor needs is written down.
 
-- **The package cache starts empty.** The first submission to each problem
-  downloads and builds again — minutes, once, per problem. **Do not update
-  on a contest morning** for that reason alone.
-- **The old directories are left where they are.** Nothing removes them, and
-  nothing reads them either. `RUNNER_CACHE_DIR` and `RUNNER_WORK_DIR` in the
-  old `.env` become inert; remove them once you are satisfied, and then
-  `sudo rm -rf /srv/algojudge/runner-cache /srv/algojudge/runner-work`.
-- **A daemon older than Engine 26 must keep the directories**, and the update
-  does not check for you before it starts. Run `./scripts/preflight.sh` first:
-  it reports the daemon's API version against 1.45 and names the overlay.
-
-**To stay on the directories**, before `up -d`:
+An installation made from `v0.1.0` has that tag's `update.sh`, which predates
+the rule that installations follow releases: it runs `git pull`, warns on a
+release checkout and stays. Move it once by hand:
 
 ```bash
-cp compose.directories.yaml compose.override.yaml
+git fetch --tags
+git checkout v0.2.0
+./scripts/preflight.sh
+./scripts/update.sh
 ```
 
-The `.env` already has the two paths, so nothing else changes. That is the
-supported arrangement, not a deprecated one.
+Three things follow, and none of them loses anything a participant can see:
 
-**An installation older than 2026-09-15** may still have an `algojudge_runner-cache`
-volume from before the directories, holding a layout no current Runner reads.
-**The new cache volume has that same name, so Compose attaches the old one**
-rather than making a fresh one. Remove it before the first start:
+- **The Runners' scratch moves from a host directory into a volume.** The 0.1
+  line set `RUNNER_WORK_DIR`; there is no such setting here. The old directory
+  is left where it is, read by nothing, and
+  `sudo rm -rf /srv/algojudge/runner-work` takes it away once you are
+  satisfied. Remove `RUNNER_WORK_DIR` and `RUNNER_CACHE_DIR` from `.env`:
+  `preflight.sh` reports a setting nothing reads.
+- **The package cache starts empty.** The first submission to each problem
+  downloads and builds again -- minutes, once, per problem. **Do not update on
+  a contest morning** for that reason alone.
+- **The daemon must be Engine 26 or later** on a host that runs Runners.
+  `preflight.sh` refuses below that; there is no arrangement that avoids it.
+
+**An installation older than 2026-09-15** may still have an
+`algojudge_runner-cache` volume holding a layout no current Runner reads. The
+cache volume has that same name, so Compose attaches the old one rather than
+making a fresh one. Remove it before the first start:
 
 ```bash
 docker volume rm algojudge_runner-cache
@@ -354,10 +364,14 @@ docker volume rm algojudge_runner-cache
 ./scripts/rollback.sh
 ```
 
-Restores exactly the images in `state/current.lock`, whatever the tags point at
-now, through an override at `state/rollback.compose.yaml`. **Bring the stack up
-with both files** until the cause is fixed, or a plain `up` puts the new images
-back.
+Restores exactly the images in `state/previous.lock` — the ones the last update
+replaced — whatever the tags point at now, through an override at
+`state/rollback.compose.yaml`. **Bring the stack up with both files** until the
+cause is fixed, or a plain `up` puts the new images back.
+
+**It goes back one update and no further.** An installation that has updated
+twice since the version it wants cannot reach it this way; the images are still
+in the registry, so the route there is a tag in `.env`.
 
 **A rollback does not undo a migration.** If the update moved the schema,
 `state/last-migration` records it and `rollback.sh` refuses to be quiet about it:
@@ -460,16 +474,16 @@ there too, and the paragraph under *Maintenance* is the one to read first.
 **`RUNNER_TESTS_AT_ONCE` is how many of one submission's tests a Runner judges
 together**, each in a lane of its own — a piece of the processors that Runner
 was given, with a measurement home of its own. It buys latency on a single
-submission and nothing else: two Runners of four lanes judge two submissions at
-once, four Runners of one lane judge four, and `docs/INSTALL.md` under *How many
-Runners, and how wide* is where that trade is made.
+submission and nothing else: the fleet is two Runners whatever this says, so a
+wider setting answers one submission sooner rather than two at once.
+`docs/INSTALL.md` under *How many Runners, and how wide* has the arithmetic.
 
 **A lane is a set of live containers, so a width multiplies memory.** Per lane:
 one judged container at the problem's memory limit plus 64 MiB, one checker or
 interactor container at 256 MiB, and one sealed copy of the test's input in the
-Runner's own memory. Four lanes on 256 MiB problems is about **1.3 GiB for one
-Runner** before inputs, and the reference deployment puts two such Runners on
-one host. The two builds are outside all of it — the submission's compile and
+Runner's own memory. Two lanes on 256 MiB problems is about **670 MiB for one
+Runner** before inputs, and four about 1.3 GiB; the reference deployment puts
+two Runners of two lanes each on one host. The two builds are outside all of it — the submission's compile and
 the package's judge get the whole of what the Runner was given, not a lane.
 
 **A lane wants a processor of its own.** A Runner asked for more lanes than its
@@ -499,8 +513,7 @@ repository's own logs.
 **The scratch is swept from inside a container**, because each Runner's is a
 volume with no path this host can open. `gc.sh` reads the volume off the
 running container rather than naming it, so it needs no guess about the project
-name and skips a Runner this host does not run; with the directories overlay it
-sweeps the host directories exactly as it always did. **Strays are normal, not
+name and skips a Runner this host does not run. **Strays are normal, not
 a defect** — a Runner killed mid-evaluation cannot tidy up after itself, and
 nothing else removes what it left: a Runner empties the one directory it is
 about to use and no other, and the job it dropped is usually re-claimed by a
@@ -652,7 +665,9 @@ docker build -f AlgoJudge-Server/AlgoJudge.Server/Dockerfile -t ghcr.io/algojudg
 docker build -t ghcr.io/algojudge/algojudge-client:0 AlgoJudge-Client
 docker build -t ghcr.io/algojudge/algojudge-runner:0 AlgoJudge-Runner
 for lang in gcc clang python pypy; do
-    docker build -t "ghcr.io/algojudge/lang-$lang:0" "AlgoJudge-Runner/images/$lang"
+    # The context is `images/`, not `images/$lang`: every one of those
+    # Dockerfiles copies `shim/aj-shim.c`, which is their sibling.
+    docker build -f "AlgoJudge-Runner/images/$lang/Dockerfile" -t "ghcr.io/algojudge/lang-$lang:0" AlgoJudge-Runner/images
 done
 
 # Only for the `external-runner` profile.

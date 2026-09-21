@@ -23,6 +23,15 @@ if [ -z "${AJ_ADMIN_TOKEN:-}" ]; then
     report "AJ_ADMIN_TOKEN is empty. /admin is closed while it is, and that includes
        the only way to set the administrator's password — so there would be no
        way into this installation at all. Generate one: openssl rand -base64 36"
+elif [ "$AJ_ADMIN_TOKEN" = "admin-token-development-only" ]; then
+    # Long enough to pass the length check below, which is why it is named
+    # here. The Server closes `/admin` on this value, so it is no way in.
+    report "AJ_ADMIN_TOKEN is the well-known development token that this product's
+       development compose files carry. The Server closes /admin when it is set
+       to that, so there is no way to set the administrator's password and
+       scripts/maintenance.sh cannot open or close the installation — which
+       stops backup.sh --quiesce, update.sh and restore.sh at that step.
+       Generate one: openssl rand -base64 36"
 elif [ "${#AJ_ADMIN_TOKEN}" -lt 24 ]; then
     report "AJ_ADMIN_TOKEN is ${#AJ_ADMIN_TOKEN} characters. It is a long-lived
        secret on a surface with no rate limit; use at least 24."
@@ -35,78 +44,18 @@ fi
 
 # ── Where the Runners keep their bytes ──────────────────────────────────────
 
-# **Which of the two arrangements this installation has**, read from what
-# Compose will actually start rather than from a variable. By default every
-# Runner is given named volumes and no host path at all; the directories
-# overlay — `compose.directories.yaml` copied over `compose.override.yaml` —
-# sets `AJ_Work__HostPath` instead. Asking the rendered file means an operator
-# who copied that overlay and one who did not are each checked against the
-# arrangement they have, and neither is warned about the other's.
-directories=no
+# **The cache and the scratch are Docker volumes**, and each judged container
+# mounts its subdirectory out of the cache as `subpath`.
 
 if runs_service runner-1 runner; then
-        if compose config 2>/dev/null | grep -q 'AJ_Work__HostPath'; then
-            directories=yes
-        fi
-
-        if [ "$directories" = no ]; then
-            # **API 1.45 is this arrangement's floor, not a recommendation.** A
-            # package is unpacked once in the cache volume the Runners share,
-            # and each judged container mounts its subdirectory out of there as
-            # `subpath` — which arrived in Docker Engine 26 / API 1.45 (April
-            # 2024) and in Podman 5. An older daemon cannot express that mount
-            # at all, and the Runner refuses to judge rather than judging
-            # against an empty directory.
-            api=$(docker version --format '{{.Server.APIVersion}}' 2>/dev/null | tr -d '[:space:]')
-            if [ -n "$api" ] && [ "$(printf '%s\n1.45\n' "$api" | sort -V | head -n1)" != "1.45" ]; then
-                report "this daemon speaks Docker API $api, and the Runners' cache volume needs
+        # **API 1.45 is this stack's floor, not a recommendation.** `subpath`
+        # arrived in Docker Engine 26 (April 2024) and in Podman 5; an older
+        # daemon cannot express that mount and the Runner refuses to judge.
+        api=$(docker version --format '{{.Server.APIVersion}}' 2>/dev/null | tr -d '[:space:]')
+        if [ -n "$api" ] && [ "$(printf '%s\n1.45\n' "$api" | sort -V | head -n1)" != "1.45" ]; then
+            report "this daemon speaks Docker API $api, and the Runners' cache volume needs
        1.45 (Engine 26, April 2024; Podman 5). The Runner would refuse to judge.
-       Either update the daemon, or keep the host directories this stack used
-       until 2026-09-16:
-           cp compose.directories.yaml compose.override.yaml
-       and set RUNNER_WORK_DIR in .env — see .env.example."
-            fi
-        else
-            if [ -z "${RUNNER_WORK_DIR:-}" ]; then
-                report "RUNNER_WORK_DIR is empty and compose.override.yaml puts the Runners'
-       scratch in host directories. It must be an absolute host path — see
-       .env.example — or remove the overlay and let them use volumes."
-            elif [ "${RUNNER_WORK_DIR#/}" = "$RUNNER_WORK_DIR" ]; then
-                # Not "does it exist": Compose creates it. The Runner hands this
-                # string to the Docker daemon, and a relative one resolves
-                # against the daemon's own filesystem — silently, as an empty
-                # directory.
-                report "RUNNER_WORK_DIR is '$RUNNER_WORK_DIR', which is relative. The Docker
-       daemon is given this path directly, and a path it cannot open becomes an
-       empty directory rather than an error — so every submission would run
-       against nothing. Write an absolute path."
-            fi
-
-            # **The cache, which the overlay gives a default and so is never
-            # empty.** It is read through `setting` rather than from the
-            # environment for exactly that reason: an installation that never
-            # names it still has one, and it is still a path the daemon has to
-            # be able to open — a judge's container mounts the unpacked package
-            # straight out of it.
-            cache=$(setting RUNNER_CACHE_DIR /srv/algojudge/runner-cache)
-            if [ "${cache#/}" = "$cache" ]; then
-                report "RUNNER_CACHE_DIR is '$cache', which is relative. The Runner hands this
-       path to the Docker daemon for every checker it runs, and a path the
-       daemon cannot open becomes an empty directory rather than an error.
-       Write an absolute path."
-            fi
-
-            # **Not under the work directory**, because `scripts/gc.sh` removes
-            # first-level directories there by age — which would take a package
-            # out from under a Runner that is judging with it.
-            case "$cache/" in
-                "${RUNNER_WORK_DIR:-/dev/null}"/*)
-                    report "RUNNER_CACHE_DIR ($cache) is inside RUNNER_WORK_DIR. The scheduled
-       cleanup removes directories under the work directory by age, and the
-       cache is not scratch: it would be deleted while a Runner was reading it.
-       Put it somewhere of its own."
-                    ;;
-            esac
+       Update the daemon."
         fi
 
         # **Lanes against processors, per Runner.** A Runner given fewer
@@ -116,13 +65,53 @@ if runs_service runner-1 runner; then
         # value an operator has to change is in this file, and because two
         # Runners can disagree about it while sharing one setting.
         lanes=$(setting RUNNER_TESTS_AT_ONCE 1)
-        for n in 1 2 3 4; do
+
+        # **An empty cpuset is every processor the host has**, which is what
+        # ships, so there the floor is the host's count and the per-Runner
+        # arithmetic below never sees it.
+        host_processors=$(nproc 2>/dev/null || echo 0)
+        case ",$(setting COMPOSE_PROFILES ''),"  in
+            *,runner,*)
+                if [ "$host_processors" -gt 0 ] && [ "$lanes" -gt "$host_processors" ]; then
+                    report "RUNNER_TESTS_AT_ONCE is $lanes and this host has
+       $host_processors processor(s). A Runner refuses to start when it cannot
+       give every lane a processor of its own, and \`restart: unless-stopped\`
+       turns that into a loop. Lower RUNNER_TESTS_AT_ONCE."
+                fi
+                ;;
+        esac
+
+        for n in 1 2; do
             eval "set_for_runner=\${RUNNER_${n}_CPUSET:-}"
             [ -n "$set_for_runner" ] || continue
-            case ",$(setting COMPOSE_PROFILES ''),"  in
-                *,runner,*|*,runner-extra,*) ;;
-                *) continue ;;
-            esac
+
+            # **Every processor a cpuset names has to be on this host**, or
+            # the daemon refuses the container and `up -d --wait` stops with
+            # half the stack running. Skipped where sysfs publishes nothing.
+            if [ -d /sys/devices/system/cpu/cpu0 ]; then
+                absent=$(
+                    for piece in $(echo "$set_for_runner" | tr ',' ' '); do
+                        case "$piece" in
+                            *-*) first=${piece%%-*}; last=${piece##*-}
+                                 c=$first
+                                 while [ "$c" -le "$last" ]; do
+                                     echo "$c"; c=$((c + 1))
+                                 done ;;
+                            *)   echo "$piece" ;;
+                        esac
+                    done | while read -r cpu; do
+                        [ -d "/sys/devices/system/cpu/cpu$cpu" ] || printf '%s ' "$cpu"
+                    done
+                )
+                if [ -n "${absent:-}" ]; then
+                    report "RUNNER_${n}_CPUSET names processor(s) this host does not have:
+       ${absent}. The daemon refuses to create that container -- \`Requested
+       CPUs are not available\` -- so \`docker compose up -d --wait\` stops with
+       part of the stack running. Leave the cpuset empty to take every
+       processor, or name only what \`lscpu -p=CPU,CORE\` lists."
+                fi
+            fi
+
             # `0-3,8` names five processors; count them the way the kernel
             # spells them rather than counting commas.
             processors=$(
@@ -227,60 +216,6 @@ if runs_service runner-1 runner; then
        nothing is broken by this. Write DOCKER_GID=$socket_gid."
         fi
 
-        # **Two halves, because two different users touch it.** The Runner
-        # writes into this directory as root; every job container mounts it
-        # **read-only** and reads it as uid 65534. So it has to be writable by
-        # root -- which a read-only filesystem or a path the daemon cannot open
-        # would deny -- and readable by everyone else.
-        #
-        # `Compose creates it` is true and is the trap: it creates it as root,
-        # mode 0755, which passes both halves. A directory chowned and locked
-        # down by hand passes the first and fails the second, and the symptom is
-        # every job failing with 'Permission denied (os error 13)' from deep
-        # inside the sandbox layer -- the same sentence a wrong DOCKER_GID used
-        # to produce, which is why they are checked apart. Probed in containers
-        # because this path belongs to the daemon's filesystem, not this shell's.
-        #
-        # **The directories only.** With volumes there is no host path to get
-        # wrong: the daemon makes them itself, root-owned and mode 0755, which
-        # is exactly what these two probes check a hand-made directory for.
-        if [ "$directories" = yes ] && [ -n "${RUNNER_WORK_DIR:-}" ] \
-           && [ "${RUNNER_WORK_DIR#/}" != "$RUNNER_WORK_DIR" ]; then
-            probe_image="nginx:$(setting NGINX_TAG 1.27-alpine)"
-            if ! MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'echo probe > /work/.algojudge-probe' >/dev/null 2>&1; then
-                report "the Runner cannot write into RUNNER_WORK_DIR. It runs as root, so this
-       is a read-only filesystem or a path the daemon cannot open:
-           sudo mkdir -p $RUNNER_WORK_DIR"
-            elif ! MSYS_NO_PATHCONV=1 docker run --rm -u 65534:65534                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'cat /work/.algojudge-probe' >/dev/null 2>&1; then
-                report "a job container could not read RUNNER_WORK_DIR. The Runner writes a
-       submission's files there as root and every job container reads them back
-       as uid 65534, so the directory has to be searchable and its files
-       readable by others. Every job would fail with 'Permission denied
-       (os error 13)':
-           sudo chmod 755 $RUNNER_WORK_DIR"
-            fi
-            MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$RUNNER_WORK_DIR:/work" "$probe_image"                 sh -c 'rm -f /work/.algojudge-probe' >/dev/null 2>&1 || true
-
-            # **The same two halves for the cache**, and it is the same
-            # arrangement: the Runner writes there as root, and a checker's
-            # container mounts what it prepared read-only and reads it as uid
-            # 65534. Inside this block because it shares the probe image and
-            # the same host, and an installation that starts a Runner always
-            # reaches it — an empty RUNNER_WORK_DIR is reported above.
-            if ! MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$cache:/cache" "$probe_image"                 sh -c 'echo probe > /cache/.algojudge-probe' >/dev/null 2>&1; then
-                report "the Runner cannot write into RUNNER_CACHE_DIR ($cache). It runs as
-       root, so this is a read-only filesystem or a path the daemon cannot open:
-           sudo mkdir -p $cache"
-            elif ! MSYS_NO_PATHCONV=1 docker run --rm -u 65534:65534                 -v "$cache:/cache" "$probe_image"                 sh -c 'cat /cache/.algojudge-probe' >/dev/null 2>&1; then
-                report "a judge's container could not read RUNNER_CACHE_DIR ($cache). The
-       Runner unpacks each package there as root and every checker container
-       reads it back as uid 65534, so the directory has to be searchable and
-       its files readable by others:
-           sudo chmod 755 $cache"
-            fi
-            MSYS_NO_PATHCONV=1 docker run --rm -u 0:0                 -v "$cache:/cache" "$probe_image"                 sh -c 'rm -f /cache/.algojudge-probe' >/dev/null 2>&1 || true
-        fi
-
         # **The cgroup version, which was never checked here at all.** The
         # Runner refuses v1 at start, so a stack on such a host comes up and the
         # Runner does not -- which reads as the Runner being broken rather than
@@ -337,11 +272,26 @@ fi
 # ── Trusted proxies ─────────────────────────────────────────────────────────
 
 networks=${TRUSTED_PROXY_NETWORKS:-}
-if [ -z "$networks" ]; then
-    report "TRUSTED_PROXY_NETWORKS is empty. The Server refuses to start without it:
-       trusting every sender of X-Forwarded-For lets a visitor state their own
-       address. Use 'none' if nothing sits in front of it."
-elif [ "$networks" != "none" ]; then
+proxies=${TRUSTED_PROXY_PROXIES:-}
+
+# **`none` is a value for the proxies, not for the networks.** The Server
+# switches the middleware off on `Forwarded:KnownProxies=none`; in
+# `KnownNetworks` the same word is read as a CIDR block and refused at startup.
+if [ "$networks" = none ]; then
+    report "TRUSTED_PROXY_NETWORKS is 'none', which is not a network. The Server
+       refuses it at startup. To run with nothing in front of this Server, write
+       TRUSTED_PROXY_PROXIES=none and leave TRUSTED_PROXY_NETWORKS empty."
+elif [ "$proxies" = none ] && [ -n "$networks" ]; then
+    report "TRUSTED_PROXY_PROXIES is 'none' and TRUSTED_PROXY_NETWORKS is
+       '$networks'. The Server takes 'none' only when it is the whole of what it
+       has been told to trust, so it would read that network instead and keep the
+       forwarded headers on. Empty TRUSTED_PROXY_NETWORKS, or drop the 'none'."
+elif [ -z "$networks" ] && [ -z "$proxies" ]; then
+    report "TRUSTED_PROXY_NETWORKS and TRUSTED_PROXY_PROXIES are both empty. The
+       Server refuses to start: trusting every sender of X-Forwarded-For lets a
+       visitor state their own address. Name the network your proxy reaches this
+       Server from, or write TRUSTED_PROXY_PROXIES=none if nothing does."
+elif [ -n "$networks" ]; then
     # **A CIDR with host bits set is refused by the Server, by name.** .NET 10
     # normalizes `10.0.5.17/24` to `10.0.5.0/24` without a word, which turns a
     # typo meaning one machine into one meaning a laboratory — so the Server
