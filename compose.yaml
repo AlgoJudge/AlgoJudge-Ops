@@ -570,15 +570,20 @@ services:
 
       RUST_LOG: ${EXTERNAL_RUNNER_LOG:-info}
 
-      # The lease, the four poll intervals **and `AJ_Poll__WaitSeconds`** check
-      # one another at startup, and the image's defaults satisfy all of it, so
-      # they are not offered here. Moving them costs a solution submitted to the
-      # archive twice.
+      # **The four poll intervals are not offered here**, and the image's
+      # defaults suit an installation that is one account at the archive.
       #
-      # The wait is in that arithmetic since 2026-09-04: a lease is renewed once
-      # per loop and the claim the Server holds open is inside the same loop, so
-      # the cycle is the judge's interval *plus* the wait. A value accepted
-      # before that day can be refused now.
+      # **Asking the archive less often does not hold a lease longer.** Leases
+      # are renewed on a timer of their own, a quarter of what the Server
+      # granted, so the two are independent. What the image still refuses at
+      # start is a lease that does not outlast
+      # `AJ_External__PendingTimeoutSeconds`, a lease above the Server's ceiling
+      # of 3600, `AJ_Poll__WaitSeconds` above 300, and `AJ_External__MaxPending`
+      # of zero.
+      #
+      # **What the archive feels is the gap between two submissions**, which is
+      # `AJ_External__SubmitMinIntervalSeconds`. An installation that has to be
+      # gentler with somebody else's service sets that one, in an overlay.
 
     volumes:
       # The identity key. Losing it costs a re-registration and an approval.

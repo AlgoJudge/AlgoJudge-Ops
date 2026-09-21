@@ -68,8 +68,8 @@ jobs:
           check "runner"               "runner-1 runner-2"
 
           # **`runner-extra` is an addition, like `external-runner`.** The
-          # reference is two Runners judging four of one submission's tests at
-          # once; the other two are for a host with the processors to spare, and
+          # reference is two Runners, each judging two of one submission's tests
+          # at once; the other two are for a host with the processors to spare, and
           # a profile that quietly started them would put four Runners back on a
           # machine divided for two.
           check "runner,runner-extra"  "runner-1 runner-2 runner-3 runner-4"

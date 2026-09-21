@@ -186,8 +186,11 @@ reaches it by name, which leaves nothing to get wrong; this entry is then
 almost always the Runner having been pointed somewhere else by hand. Check what
 it was actually given:
 
+**Both Runner images are distroless**, so `docker compose exec` has no `env`
+and no shell to run it with. Read the container from outside instead:
+
 ```bash
-docker compose exec runner-1 env | grep AJ_Cache__
+docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$(docker compose ps -q runner-1)" | grep AJ_Cache__
 docker volume inspect algojudge_runner-cache
 ```
 
@@ -260,7 +263,7 @@ through exactly as written, deliberately — trimming it broke a sign-in once.
 
 The same loop as above, from a different cause: a Runner checks its intervals
 against one another before it does anything, and `restart: unless-stopped` turns
-a refusal into a restart every few seconds. Three of these are worth knowing,
+a refusal into a restart every few seconds. Two of these are worth knowing,
 and **none of them can be reached with the values this stack ships** — they are
 what a `.env` of your own can produce.
 
@@ -285,15 +288,14 @@ docker compose logs external-runner | tail -5
   connected and be handed nothing. Leave the variable unset for the default.
   This one is the sandboxing Runner's only: on the external Runner an empty
   value deliberately means the judge's own type.
-- **`… make a cycle of N seconds, which does not fit four times inside
-  AJ_Lease__RequestSeconds.`** The external Runner renews the leases it holds
-  once per cycle, and a cycle is the judge's own interval **plus** the claim the
-  Server holds open. A lease that could expire between two renewals is one the
-  Server reclaims while a submission is still live at the archive, and the next
-  Runner sends it again. Lower either interval, or raise the lease.
+The external Runner holds its leases on a timer of its own — a quarter of the
+lease the Server granted — so how often it asks the archive says nothing about
+whether a lease expires. What it still refuses at start is a lease that does not
+outlast `AJ_External__PendingTimeoutSeconds`, a lease above the Server's ceiling
+of 3600, and `AJ_Poll__WaitSeconds` above 300.
 
-This stack does not offer the four external intervals in `.env.example` for
-exactly this reason; the image's defaults satisfy all of it.
+This stack does not offer the four external intervals in `.env.example`; the
+image's defaults suit an installation that is one account at the archive.
 
 ## A Runner refuses to start and names `AJ_Runner__TestsAtOnce`
 

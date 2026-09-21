@@ -33,8 +33,9 @@ during a window loses it and every job in it is sent again.
 
 **Stopping it politely does not avoid that, and is still worth doing.** On
 `SIGTERM` it hands every job it is holding back to the queue at once, so the
-resend starts immediately rather than after each lease expires — up to twenty
-participants who would otherwise wait ten minutes for a Runner that is already
+resend starts immediately rather than after each lease expires — as many
+participants as `AJ_External__MaxPending` allows to be outstanding, a hundred by
+default, who would otherwise wait out the lease for a Runner that is already
 gone. The duplicate on the archive is unchanged: the answer that was coming has
 nowhere to land either way.
 
@@ -474,9 +475,9 @@ Runners, and how wide* is where that trade is made.
 **A lane is a set of live containers, so a width multiplies memory.** Per lane:
 one judged container at the problem's memory limit plus 64 MiB, one checker or
 interactor container at 256 MiB, and one sealed copy of the test's input in the
-Runner's own memory. Four lanes on 256 MiB problems is about **1.3 GiB for one
-Runner** before inputs, and the reference deployment puts two such Runners on
-one host. The two builds are outside all of it — the submission's compile and
+Runner's own memory. Two lanes on 256 MiB problems is about **670 MiB for one
+Runner** before inputs, and four about 1.3 GiB; the reference deployment puts
+two Runners of two lanes each on one host. The two builds are outside all of it — the submission's compile and
 the package's judge get the whole of what the Runner was given, not a lane.
 
 **A lane wants a processor of its own.** A Runner asked for more lanes than its
@@ -659,7 +660,9 @@ docker build -f AlgoJudge-Server/AlgoJudge.Server/Dockerfile -t ghcr.io/algojudg
 docker build -t ghcr.io/algojudge/algojudge-client:0 AlgoJudge-Client
 docker build -t ghcr.io/algojudge/algojudge-runner:0 AlgoJudge-Runner
 for lang in gcc clang python pypy; do
-    docker build -t "ghcr.io/algojudge/lang-$lang:0" "AlgoJudge-Runner/images/$lang"
+    # The context is `images/`, not `images/$lang`: every one of those
+    # Dockerfiles copies `shim/aj-shim.c`, which is their sibling.
+    docker build -f "AlgoJudge-Runner/images/$lang/Dockerfile" -t "ghcr.io/algojudge/lang-$lang:0" AlgoJudge-Runner/images
 done
 
 # Only for the `external-runner` profile.
